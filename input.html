@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>にんにく在庫入力</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f5f0; min-height: 100vh; }
+.header { background: #3B6D11; color: white; padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+.icon { font-size: 24px; }
+.header h1 { font-size: 17px; font-weight: 600; }
+.header p { font-size: 12px; opacity: 0.8; }
+.tabs { display: flex; background: #2d5a0d; }
+.tab { flex: 1; padding: 11px; font-size: 14px; font-weight: 600; border: none; background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; border-bottom: 3px solid transparent; }
+.tab.active { color: white; border-bottom-color: #a8d060; }
+.body { padding: 16px; }
+.card { background: white; border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+.card h2 { font-size: 14px; font-weight: 600; color: #444; margin-bottom: 12px; }
+label { font-size: 13px; color: #666; display: block; margin-bottom: 4px; margin-top: 12px; }
+label:first-of-type { margin-top: 0; }
+select, input[type="text"], input[type="date"], input[type="number"] {
+  width: 100%; height: 46px; border: 1.5px solid #e0e0e0; border-radius: 10px;
+  padding: 0 12px; font-size: 16px; color: #222; background: #fafafa; -webkit-appearance: none;
+}
+select:focus, input:focus { outline: none; border-color: #3B6D11; }
+.type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.type-btn { padding: 12px 4px; border: 2px solid #e0e0e0; border-radius: 10px; background: white; font-size: 13px; cursor: pointer; text-align: center; color: #555; }
+.type-btn.sel-clean { border-color: #639922; background: #EAF3DE; color: #27500A; font-weight: 600; }
+.type-btn.sel-damaged { border-color: #D85A30; background: #FAECE7; color: #712B13; font-weight: 600; }
+.type-btn.sel-shipped { border-color: #378ADD; background: #E6F1FB; color: #0C447C; font-weight: 600; }
+.type-btn.sel-planting { border-color: #8B5E0A; background: #FDF3E3; color: #5a3c06; font-weight: 600; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.dot-c { background: #639922; }
+.dot-d { background: #D85A30; }
+.dot-s { background: #378ADD; }
+.dot-p { background: #B87820; }
+.btn-submit { width: 100%; height: 52px; background: #3B6D11; color: white; border: none; border-radius: 12px; font-size: 17px; font-weight: 600; cursor: pointer; }
+.btn-submit:active { background: #27500A; }
+.btn-submit:disabled { background: #aaa; }
+.btn-submit.orange { background: #c05a10; }
+.btn-submit.orange:active { background: #993d08; }
+.err { color: #c0392b; font-size: 13px; margin-top: 8px; }
+.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #27500A; color: white; padding: 12px 24px; border-radius: 30px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 999; }
+.toast.show { opacity: 1; }
+.sec { display: none; }
+.sec.active { display: block; }
+.entry-item { background: white; border-radius: 12px; padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+.entry-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.entry-company { font-size: 15px; font-weight: 600; }
+.entry-date { font-size: 12px; color: #888; }
+.entry-types { display: flex; flex-direction: column; gap: 8px; }
+.entry-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 8px; background: #f7f7f5; }
+.entry-row-left { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.entry-row-right { display: flex; align-items: center; gap: 8px; }
+.count-text { font-size: 15px; font-weight: 600; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+.badge-c { background: #EAF3DE; color: #27500A; }
+.badge-d { background: #FAECE7; color: #712B13; }
+.badge-s { background: #E6F1FB; color: #0C447C; }
+.badge-p { background: #FDF3E3; color: #5a3c06; }
+.edit-row { display: none; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; background: #f0f7e8; border-radius: 8px; border: 1.5px solid #c0dd97; }
+.edit-row input { flex: 1; height: 40px; border: 1.5px solid #3B6D11; border-radius: 8px; padding: 0 10px; font-size: 16px; text-align: center; background: white; }
+.btn-save { height: 40px; padding: 0 14px; background: #3B6D11; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-cancel { height: 40px; padding: 0 14px; background: white; color: #666; border: 1.5px solid #d0d0d0; border-radius: 8px; font-size: 14px; cursor: pointer; }
+.btn-edit-small { height: 32px; padding: 0 12px; background: white; color: #185FA5; border: 1.5px solid #b5d4f4; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.btn-del-small { height: 32px; padding: 0 12px; background: white; color: #c0392b; border: 1.5px solid #f0b0ad; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.msg { text-align: center; padding: 40px 20px; color: #999; font-size: 14px; }
+.summary-card { background: #f0f7e8; border: 1.5px solid #c0dd97; border-radius: 12px; padding: 12px 14px; margin-top: 12px; display: none; }
+.summary-card h3 { font-size: 12px; color: #4a7c1a; font-weight: 600; margin-bottom: 8px; letter-spacing: 0.03em; }
+.summary-grid { display: flex; gap: 8px; }
+.summary-item { flex: 1; background: white; border-radius: 8px; padding: 8px 6px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.summary-item .s-label { font-size: 11px; color: #888; margin-bottom: 3px; }
+.summary-item .s-val { font-size: 18px; font-weight: 700; line-height: 1; }
+.s-val-c { color: #3a7d11; }
+.s-val-d { color: #c04020; }
+.s-val-s { color: #1a62b0; }
+.filter-row { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+.filter-row label { font-size: 13px; color: #666; white-space: nowrap; margin: 0; }
+.filter-row select { height: 38px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="icon">🧄</div>
+  <div><h1>にんにく在庫入力</h1><p>スマホ入力フォーム</p></div>
+</div>
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('add',this)">➕ 新規入力</button>
+  <button class="tab" onclick="switchTab('edit',this)">✏️ 修正・削除</button>
+</div>
+
+<!-- 新規入力 -->
+<div class="sec active body" id="sec-add">
+  <div class="card">
+    <h2>👤 担当者・企業</h2>
+    <label>担当者名</label>
+    <input type="text" id="staff" placeholder="例：田中">
+    <label>企業名</label>
+    <select id="company" onchange="updateCompanySummary()"><option value="">読み込み中...</option></select>
+    <div class="summary-card" id="company-summary">
+      <h3>📊 この企業の累計</h3>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="s-label">🟢 きれい</div>
+          <div class="s-val s-val-c" id="sum-clean">0</div>
+        </div>
+        <div class="summary-item">
+          <div class="s-label">🔴 傷</div>
+          <div class="s-val s-val-d" id="sum-damaged">0</div>
+        </div>
+        <div class="summary-item">
+          <div class="s-label">🔵 出荷用</div>
+          <div class="s-val s-val-s" id="sum-shipped">0</div>
+        </div>
+        <div class="summary-item">
+          <div class="s-label">🟤 植え込み</div>
+          <div class="s-val" style="color:#8B5E0A" id="sum-planting">0</div>
+        </div>
+      </div>
+    </div>
+    <label>日付</label>
+    <input type="date" id="date">
+  </div>
+  <div class="card">
+    <h2>📦 種別を選択</h2>
+    <div class="type-grid">
+      <button class="type-btn" onclick="selectType('clean',this)"><span class="dot dot-c"></span>きれい</button>
+      <button class="type-btn" onclick="selectType('damaged',this)"><span class="dot dot-d"></span>傷</button>
+      <button class="type-btn" onclick="selectType('shipped',this)"><span class="dot dot-s"></span>出荷用</button>
+      <button class="type-btn" onclick="selectType('planting',this)"><span class="dot dot-p"></span>植え込み</button>
+    </div>
+    <label style="margin-top:14px">個数</label>
+    <input type="number" id="count" placeholder="0" min="1" step="1" inputmode="numeric">
+  </div>
+  <button class="btn-submit" id="submit-btn" onclick="submitNew()">送信する</button>
+  <p class="err" id="err-add"></p>
+</div>
+
+<!-- 修正・削除 -->
+<div class="sec body" id="sec-edit">
+  <div class="filter-row">
+    <label>企業：</label>
+    <select id="edit-company-filter" onchange="renderEditList()">
+      <option value="all">すべて</option>
+    </select>
+  </div>
+  <div id="edit-list"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let appData = { companies: [], entries: [] };
+let selectedType = '';
+
+// タブ切り替え
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('sec-' + name).classList.add('active');
+  if (name === 'edit') renderEditList();
+}
+
+function selectType(type, el) {
+  selectedType = type;
+  document.querySelectorAll('.type-btn').forEach(b => b.className = 'type-btn');
+  el.classList.add('sel-' + type);
+}
+
+function showToast(msg, color) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color || '#27500A';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+async function loadData() {
+  try {
+    const res = await fetch('/api/data', { headers: { 'x-session-token': sessionStorage.getItem('garlic-token') } });
+    if (res.status === 401 || res.status === 403) { location.href = '/login.html'; return; }
+    appData = await res.json();
+    // 新規入力セレクト
+    const sel = document.getElementById('company');
+    sel.innerHTML = appData.companies.length
+      ? '<option value="">企業を選択</option>' + appData.companies.map(c => `<option value="${c}">${c}</option>`).join('')
+      : '<option value="">企業未登録</option>';
+    // 修正フィルタ
+    const esel = document.getElementById('edit-company-filter');
+    const cur = esel.value;
+    esel.innerHTML = '<option value="all">すべて</option>' + appData.companies.map(c => `<option value="${c}">${c}</option>`).join('');
+    esel.value = cur || 'all';
+  } catch(e) {
+    document.getElementById('company').innerHTML = '<option value="">接続エラー</option>';
+  }
+}
+
+function authH() {
+  return { 'Content-Type': 'application/json', 'x-session-token': sessionStorage.getItem('garlic-token') };
+}
+
+// 日付×種別ごとに集計
+function summarizeForEdit() {
+  // [ { company, type, date, total, ids[] } ]
+  const map = {};
+  appData.entries.forEach(e => {
+    const key = `${e.company}||${e.type}||${e.date}`;
+    if (!map[key]) map[key] = { company: e.company, type: e.type, date: e.date, total: 0, ids: [] };
+    map[key].total += e.count;
+    map[key].ids.push(e.id);
+  });
+  return Object.values(map).sort((a,b) => {
+    if (a.company !== b.company) return a.company.localeCompare(b.company);
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    return 0;
+  });
+}
+
+// 経過日数からラベル生成（記入日を1日目として計算）
+// clean: 記入日含め5日目が植え込み日
+// planting: 植えた日含め4日目から収穫可
+function deadlineLabel(type, dateStr) {
+  if (type !== 'clean' && type !== 'planting') return '';
+  const entry = new Date(dateStr);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dayNum = Math.floor((today - entry) / 86400000) + 1; // 記入日=1日目
+  if (type === 'clean') {
+    const remaining = 5 - dayNum; // 5日目が植え込み日
+    if (remaining > 0) return `<span style="font-size:11px;background:#FFF8DC;color:#7a5c00;border-radius:6px;padding:2px 6px;margin-left:6px">植え込みまであと${remaining}日</span>`;
+    if (remaining === 0) return `<span style="font-size:11px;background:#FFF0C0;color:#8B4500;border-radius:6px;padding:2px 6px;margin-left:6px;font-weight:700">⚠ 本日植え込み日(5日目)</span>`;
+    return `<span style="font-size:11px;background:#FAECE7;color:#7a1a0a;border-radius:6px;padding:2px 6px;margin-left:6px;font-weight:700">🚨 植え込み期限超過(${-remaining}日)</span>`;
+  }
+  if (type === 'planting') {
+    const remaining = 4 - dayNum; // 4日目から収穫可
+    if (remaining > 0) return `<span style="font-size:11px;background:#FDF3E3;color:#5a3c06;border-radius:6px;padding:2px 6px;margin-left:6px">収穫まであと${remaining}日</span>`;
+    return `<span style="font-size:11px;background:#EAF3DE;color:#27500A;border-radius:6px;padding:2px 6px;margin-left:6px;font-weight:700">✅ 収穫可能(${dayNum}日目)</span>`;
+  }
+  return '';
+}
+
+const TYPE_LABEL = { clean: 'きれい', damaged: '傷', shipped: '出荷用', planting: '植え込み' };
+const BADGE_CLASS = { clean: 'badge-c', damaged: 'badge-d', shipped: 'badge-s', planting: 'badge-p' };
+
+function formatDate(d) { const [,m,day] = d.split('-'); return m+'月'+parseInt(day)+'日'; }
+
+function renderEditList() {
+  const filter = document.getElementById('edit-company-filter').value;
+  const items = summarizeForEdit().filter(i => filter === 'all' || i.company === filter);
+
+  if (!items.length) {
+    document.getElementById('edit-list').innerHTML = '<p class="msg">データがありません</p>';
+    return;
+  }
+
+  // 企業ごとにグループ化
+  const byCompany = {};
+  items.forEach(i => {
+    if (!byCompany[i.company]) byCompany[i.company] = {};
+    if (!byCompany[i.company][i.date]) byCompany[i.company][i.date] = [];
+    byCompany[i.company][i.date].push(i);
+  });
+
+  let html = '';
+  Object.entries(byCompany).forEach(([company, dates]) => {
+    Object.entries(dates).sort((a,b) => b[0].localeCompare(a[0])).forEach(([date, typeItems]) => {
+      const eid = `entry-${company}-${date}`.replace(/[^\w]/g,'_');
+      html += `<div class="entry-item">
+        <div class="entry-top">
+          <span class="entry-company">🏢 ${company}</span>
+          <span class="entry-date">${formatDate(date)}</span>
+        </div>
+        <div class="entry-types">`;
+      typeItems.forEach(item => {
+        const rid = `r-${company}-${item.type}-${date}`.replace(/[^\w]/g,'_');
+        html += `
+          <div>
+            <div class="entry-row" id="${rid}-row">
+              <div class="entry-row-left">
+                <span class="badge ${BADGE_CLASS[item.type]}">${TYPE_LABEL[item.type]}</span>
+                <span class="count-text" id="${rid}-count">${item.total.toLocaleString()} 個</span>
+                ${deadlineLabel(item.type, item.date)}
+              </div>
+              <div class="entry-row-right">
+                <button class="btn-edit-small" onclick="startEdit('${rid}','${item.total}')">修正</button>
+                <button class="btn-del-small" onclick="deleteItem('${company}','${item.type}','${date}')">削除</button>
+              </div>
+            </div>
+            <div class="edit-row" id="${rid}-edit">
+              <input type="number" id="${rid}-input" value="${item.total}" min="0" step="1" inputmode="numeric">
+              <button class="btn-save" onclick="saveEdit('${company}','${item.type}','${date}','${rid}')">保存</button>
+              <button class="btn-cancel" onclick="cancelEdit('${rid}')">取消</button>
+            </div>
+          </div>`;
+      });
+      html += `</div></div>`;
+    });
+  });
+  document.getElementById('edit-list').innerHTML = html;
+}
+
+function startEdit(rid, currentVal) {
+  document.getElementById(rid + '-edit').style.display = 'flex';
+  const inp = document.getElementById(rid + '-input');
+  inp.value = currentVal;
+  inp.focus();
+  inp.select();
+}
+
+function cancelEdit(rid) {
+  document.getElementById(rid + '-edit').style.display = 'none';
+}
+
+async function saveEdit(company, type, date, rid) {
+  const newCount = parseInt(document.getElementById(rid + '-input').value);
+  if (isNaN(newCount) || newCount < 0) { showToast('正しい個数を入力してください', '#c0392b'); return; }
+
+  const ids = appData.entries.filter(e => e.company===company && e.type===type && e.date===date).map(e=>e.id);
+  for (const id of ids) await fetch(`/api/entry/${id}`, { method: 'DELETE', headers: authH() });
+  if (newCount > 0) {
+    await fetch('/api/entry', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({ company, type, count: newCount, date, staff: '修正' })
+    });
+  }
+  showToast('✓ 修正しました！');
+  await loadData();
+  renderEditList();
+}
+
+async function deleteItem(company, type, date) {
+  if (!confirm(`${company}の${TYPE_LABEL[type]}（${formatDate(date)}）を削除しますか？`)) return;
+  const ids = appData.entries.filter(e => e.company===company && e.type===type && e.date===date).map(e=>e.id);
+  for (const id of ids) await fetch(`/api/entry/${id}`, { method: 'DELETE', headers: authH() });
+  showToast('削除しました', '#c0392b');
+  await loadData();
+  renderEditList();
+}
+
+async function submitNew() {
+  const staff = document.getElementById('staff').value.trim();
+  const company = document.getElementById('company').value;
+  const date = document.getElementById('date').value;
+  const count = document.getElementById('count').value;
+  const err = document.getElementById('err-add');
+  err.textContent = '';
+
+  if (!staff) { err.textContent = '担当者名を入力してください'; return; }
+  if (!company) { err.textContent = '企業を選択してください'; return; }
+  if (!date) { err.textContent = '日付を選択してください'; return; }
+  if (!selectedType) { err.textContent = '種別を選択してください'; return; }
+  if (!count || parseInt(count) <= 0) { err.textContent = '個数を入力してください'; return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true; btn.textContent = '送信中...';
+  try {
+    const res = await fetch('/api/entry', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({ company, type: selectedType, count, date, staff })
+    });
+    if (res.ok) {
+      showToast('✓ 送信しました！');
+      document.getElementById('count').value = '';
+      selectedType = '';
+      document.querySelectorAll('.type-btn').forEach(b => b.className = 'type-btn');
+      await loadData();
+      updateCompanySummary();
+    } else {
+      err.textContent = '送信に失敗しました';
+    }
+  } catch(e) {
+    err.textContent = 'サーバーに接続できません';
+  }
+  btn.disabled = false; btn.textContent = '送信する';
+}
+
+// 今日の日付セット
+const today = new Date();
+document.getElementById('date').value = today.toISOString().split('T')[0];
+
+// 認証チェック
+if (!sessionStorage.getItem('garlic-token')) { location.href = '/login.html'; }
+
+function updateCompanySummary() {
+  const company = document.getElementById('company').value;
+  const card = document.getElementById('company-summary');
+  if (!company) { card.style.display = 'none'; return; }
+
+  const totals = { clean: 0, damaged: 0, shipped: 0, planting: 0 };
+  appData.entries.forEach(e => {
+    if (e.company === company && totals[e.type] !== undefined) totals[e.type] += e.count;
+  });
+
+  document.getElementById('sum-clean').textContent = totals.clean.toLocaleString();
+  document.getElementById('sum-damaged').textContent = totals.damaged.toLocaleString();
+  document.getElementById('sum-shipped').textContent = totals.shipped.toLocaleString();
+  document.getElementById('sum-planting').textContent = totals.planting.toLocaleString();
+  card.style.display = 'block';
+}
+
+loadData();
+</script>
+</body>
+</html>

@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>にんにく在庫管理 - PC管理画面</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Hiragino Sans', 'Yu Gothic UI', sans-serif; background: #f2f4f0; color: #222; }
+.header { background: #3B6D11; color: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+.hl { display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header p { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+.rbadge { background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+main { padding: 20px 24px; max-width: 1100px; margin: 0 auto; }
+.ip-box { background: #EAF3DE; border: 1px solid #c0dd97; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; }
+.ip-box h3 { font-size: 13px; color: #27500A; font-weight: 600; margin-bottom: 6px; }
+.ip-url { font-size: 20px; font-weight: 700; color: #3B6D11; font-family: monospace; }
+.ip-box p { font-size: 12px; color: #639922; margin-top: 4px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1.5px solid #d8ddd0; }
+.tab { padding: 9px 20px; font-size: 14px; cursor: pointer; border: none; background: transparent; color: #666; border-bottom: 2.5px solid transparent; margin-bottom: -1.5px; }
+.tab.active { color: #3B6D11; border-bottom-color: #3B6D11; font-weight: 600; }
+.sec { display: none; }
+.sec.active { display: block; }
+.cards-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 20px; }
+.stat-card { background: white; border-radius: 12px; padding: 18px; border: 1px solid #e4e8dc; }
+.stat-card .lbl { font-size: 12px; color: #888; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.stat-card .val { font-size: 30px; font-weight: 600; }
+.stat-card .unit { font-size: 14px; color: #888; margin-left: 3px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.dot-c { background: #639922; }
+.dot-d { background: #D85A30; }
+.dot-s { background: #378ADD; }
+.dot-p { background: #B87820; }
+.company-block { background: white; border-radius: 12px; border: 1px solid #e4e8dc; margin-bottom: 16px; overflow: hidden; }
+.company-header { padding: 14px 18px; background: #f7f9f4; border-bottom: 1px solid #e4e8dc; display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+.company-name { font-size: 16px; font-weight: 600; }
+.company-totals { display: flex; gap: 10px; align-items: center; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+.badge-c { background: #EAF3DE; color: #27500A; }
+.badge-d { background: #FAECE7; color: #712B13; }
+.badge-s { background: #E6F1FB; color: #0C447C; }
+.badge-p { background: #FDF3E3; color: #5a3c06; }
+.dl-tag { display: inline-block; font-size: 11px; border-radius: 6px; padding: 2px 6px; margin-left: 6px; font-weight: 500; }
+.dl-soon { background: #FFF8DC; color: #7a5c00; }
+.dl-today { background: #FFF0C0; color: #8B4500; font-weight: 700; }
+.dl-over { background: #FAECE7; color: #7a1a0a; font-weight: 700; }
+.dl-plant-wait { background: #FDF3E3; color: #5a3c06; }
+.dl-plant-ready { background: #EAF3DE; color: #27500A; font-weight: 700; }
+.company-detail { padding: 0 18px 14px; }
+.detail-label { font-size: 12px; color: #888; margin: 12px 0 6px; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f7f9f4; padding: 8px 12px; text-align: left; font-weight: 600; font-size: 12px; color: #666; border-bottom: 1px solid #e4e8dc; }
+td { padding: 9px 12px; border-bottom: 1px solid #f0f0ec; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+.total-row td { font-weight: 600; background: #f7f9f4; }
+.filter-bar { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.ctag { padding: 6px 14px; border-radius: 20px; font-size: 12px; border: 1px solid #d0d4c8; cursor: pointer; background: white; color: #666; }
+.ctag.active { background: #3B6D11; color: white; border-color: #3B6D11; }
+.form-sec { background: white; border-radius: 12px; border: 1px solid #e4e8dc; padding: 18px; margin-bottom: 20px; }
+.form-sec h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+.frow { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.fg { display: flex; flex-direction: column; gap: 4px; }
+.fg label { font-size: 12px; color: #666; }
+.fg input, .fg select { height: 38px; border: 1px solid #d0d4c8; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fafafa; }
+.btn { height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid #c8ccc0; background: white; font-size: 13px; cursor: pointer; color: #333; }
+.btn:hover { background: #f5f7f2; }
+.btn-primary { background: #3B6D11; color: white; border-color: #3B6D11; }
+.btn-primary:hover { background: #27500A; }
+.btn-danger { color: #c0392b; border-color: #e0b0ad; font-size: 12px; height: 28px; padding: 0 10px; }
+.btn-danger:hover { background: #fdf0ee; }
+.btn-edit { color: #185FA5; border-color: #b5d4f4; font-size: 12px; height: 28px; padding: 0 10px; }
+.btn-edit:hover { background: #E6F1FB; }
+.btn-save { color: #27500A; border-color: #c0dd97; font-size: 12px; height: 28px; padding: 0 10px; background: #EAF3DE; }
+.btn-save:hover { background: #c0dd97; }
+.btn-cancel { color: #666; border-color: #d0d4c8; font-size: 12px; height: 28px; padding: 0 10px; }
+.inline-edit { display: none; align-items: center; gap: 6px; }
+.inline-edit input { width: 80px; height: 28px; border: 1.5px solid #378ADD; border-radius: 6px; padding: 0 8px; font-size: 13px; text-align: center; }
+.hist-item { background: white; border: 1px solid #e4e8dc; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hist-left { flex: 1; }
+.hist-company { font-size: 14px; font-weight: 600; }
+.hist-meta { font-size: 12px; color: #888; margin-top: 3px; }
+.chevron { font-size: 14px; color: #aaa; transition: transform 0.2s; }
+.chevron.open { transform: rotate(180deg); }
+.detail-hidden { display: none; }
+.sched-panel { background: white; border-radius: 12px; border: 1px solid #e4e8dc; padding: 20px; }
+.btn-close { background: #c05a10; color: white; border-color: #c05a10; font-size: 14px; font-weight: 600; height: 42px; padding: 0 22px; border-radius: 8px; }
+.btn-close:hover { background: #993d08; }
+.close-bar { display: flex; align-items: center; justify-content: space-between; background: white; border: 1.5px solid #e4e8dc; border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; }
+.close-bar-left { display: flex; flex-direction: column; gap: 3px; }
+.close-bar-left strong { font-size: 14px; }
+.close-bar-left span { font-size: 12px; color: #888; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: white; border-radius: 16px; padding: 28px 28px 22px; max-width: 420px; width: 90%; box-shadow: 0 8px 30px rgba(0,0,0,0.18); }
+.modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+.modal p { font-size: 13px; color: #555; line-height: 1.6; margin-bottom: 18px; }
+.modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+.modal input[type="date"] { width: 100%; height: 42px; border: 1.5px solid #d0d4c8; border-radius: 8px; padding: 0 12px; font-size: 15px; margin-bottom: 16px; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<div class="header">
+  <div class="hl">
+    <span style="font-size:26px">🧄</span>
+    <div>
+      <h1>にんにく在庫管理 — PC管理画面</h1>
+      <p id="last-update">読み込み中...</p>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="rbadge">管理者</span>
+    <button onclick="doLogout()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:white;border-radius:20px;padding:5px 14px;font-size:12px;cursor:pointer">ログアウト</button>
+  </div>
+</div>
+<main>
+  <div class="ip-box">
+    <h3>📱 職員ログインURL</h3>
+    <div class="ip-url" id="input-url">取得中...</div>
+    <p>上記URLをスマホのブラウザで開いてください</p>
+  </div>
+
+  <div class="close-bar">
+    <div class="close-bar-left">
+      <strong>📅 日次締め・Excel出力</strong>
+      <span>締めた日のデータをExcelファイルとしてダウンロードします</span>
+    </div>
+    <button class="btn btn-close" onclick="openCloseModal()">🔒 締めてExcel出力</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('inventory',this)">📦 在庫一覧</button>
+    <button class="tab" onclick="switchTab('history',this)">📋 入力履歴</button>
+    <button class="tab" onclick="switchTab('settings',this)">⚙️ 企業管理</button>
+    <button class="tab" onclick="switchTab('schedule',this)">📅 スケジュール生成</button>
+  </div>
+
+  <div class="sec active" id="tab-inventory">
+    <div class="filter-bar" id="filter-bar"></div>
+    <div class="cards-grid" id="summary-cards"></div>
+    <div id="company-blocks"></div>
+  </div>
+
+  <div class="sec" id="tab-history">
+    <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+      <label style="font-size:13px;color:#666">企業：</label>
+      <select id="hist-filter" onchange="renderHistory()" style="height:36px;border:1px solid #d0d4c8;border-radius:8px;padding:0 10px;font-size:13px"></select>
+    </div>
+    <div id="hist-list"></div>
+  </div>
+
+  <div class="sec" id="tab-settings">
+    <div class="form-sec">
+      <h3>企業を追加</h3>
+      <div class="frow">
+        <div class="fg"><label>企業名</label><input type="text" id="new-company" placeholder="例：山田農園" style="width:220px"></div>
+        <button class="btn btn-primary" onclick="addCompany()">追加</button>
+      </div>
+    </div>
+    <div id="company-list-settings"></div>
+  </div>
+
+  <div class="sec" id="tab-schedule">
+    <div class="sched-panel">
+      <h2 style="font-size:15px;font-weight:700;margin-bottom:16px">📅 月次作業スケジュール自動生成（Gemini AI）</h2>
+      <div class="frow" style="margin-bottom:12px">
+        <div class="fg">
+          <label>対象年月</label>
+          <input type="month" id="sched-month" title="対象年月" style="width:180px;height:40px;border:1.5px solid #d0d4c8;border-radius:8px;padding:0 10px;font-size:15px">
+        </div>
+        <div class="fg">
+          <label>企業を選択</label>
+          <select id="sched-company" title="企業を選択" style="width:180px;height:40px;border:1.5px solid #d0d4c8;border-radius:8px;padding:0 10px;font-size:14px">
+            <option value="all">全企業</option>
+          </select>
+        </div>
+        <div class="fg" style="align-self:flex-end">
+          <button class="btn btn-primary" onclick="generateSchedule()" id="sched-btn" style="height:40px;padding:0 22px">🤖 スケジュール生成</button>
+        </div>
+      </div>
+      <div class="fg" style="margin-bottom:16px">
+        <label>目標・補足（任意）</label>
+        <input type="text" id="sched-goal" title="目標・補足" placeholder="例：黒にんにく100パック目標、メンバー5名" style="width:100%;height:40px;border:1.5px solid #d0d4c8;border-radius:8px;padding:0 12px;font-size:14px">
+      </div>
+      <div id="sched-loading" style="display:none;text-align:center;padding:50px 0;color:#666">
+        <div style="font-size:32px;margin-bottom:12px">⏳</div>
+        <div style="font-size:14px">スケジュールを生成中です...<br><small style="color:#aaa">在庫データと工程ルールを分析しています</small></div>
+      </div>
+      <div id="sched-error" style="display:none;background:#FAECE7;border-radius:10px;padding:16px;color:#7a1a0a;font-size:13px;margin-bottom:12px"></div>
+      <div id="sched-output" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:12px;color:#888" id="sched-meta"></span>
+          <button class="btn" onclick="copySchedule()" style="font-size:12px;padding:5px 14px">📋 コピー</button>
+        </div>
+        <div id="sched-result" style="background:#f8faf5;border:1.5px solid #d0ddc8;border-radius:10px;padding:20px;font-size:13px;line-height:2;white-space:pre-wrap;max-height:65vh;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+let appData = { companies: [], entries: [] };
+let activeFilter = 'all';
+
+const TYPE_LABEL = { clean: 'きれい', damaged: '傷', shipped: '出荷用', planting: '植え込み' };
+const TYPE_BADGE = { clean: 'badge-c', damaged: 'badge-d', shipped: 'badge-s', planting: 'badge-p' };
+
+// ── 認証チェック ────────────────────────────
+const _token = sessionStorage.getItem('garlic-token');
+const _role  = sessionStorage.getItem('garlic-role');
+if (!_token || _role !== 'admin') { location.href = '/login.html'; }
+
+function authHeader() {
+  return { 'Content-Type': 'application/json', 'x-session-token': sessionStorage.getItem('garlic-token') };
+}
+
+let _fetchErrorCount = 0;
+
+async function fetchData() {
+  try {
+    const res = await fetch('/api/data', { headers: authHeader() });
+    if (res.status === 401 || res.status === 403) { location.href = '/login.html'; return; }
+    appData = await res.json();
+    _fetchErrorCount = 0;
+    document.getElementById('last-update').textContent = '最終更新: ' + new Date().toLocaleTimeString('ja-JP');
+    renderInventory();
+    renderHistory();
+    renderSettings();
+  } catch(e) {
+    _fetchErrorCount++;
+    if (_fetchErrorCount >= 3) {
+      document.getElementById('last-update').textContent = 'サーバー接続エラー';
+    }
+  }
+}
+
+function fmt(n) { return Number(n).toLocaleString(); }
+function formatDate(d) { const [,m,day] = d.split('-'); return m+'月'+parseInt(day)+'日'; }
+
+// 経過日数からラベル生成（記入日を1日目として計算）
+// clean: 記入日含め5日目が植え込み日
+// planting: 植えた日含め4日目から収穫可
+function deadlineTag(type, dateStr) {
+  const entry = new Date(dateStr);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dayNum = Math.floor((today - entry) / 86400000) + 1; // 記入日=1日目
+  if (type === 'clean') {
+    const rem = 5 - dayNum;
+    if (rem > 0) return `<span class="dl-tag dl-soon">植え込みまであと${rem}日</span>`;
+    if (rem === 0) return `<span class="dl-tag dl-today">⚠ 本日植え込み日(5日目)</span>`;
+    return `<span class="dl-tag dl-over">🚨 植え込み期限超過(${-rem}日)</span>`;
+  }
+  if (type === 'planting') {
+    const rem = 4 - dayNum;
+    if (rem > 0) return `<span class="dl-tag dl-plant-wait">収穫まであと${rem}日</span>`;
+    return `<span class="dl-tag dl-plant-ready">✅ 収穫可能(${dayNum}日目)</span>`;
+  }
+  return '';
+}
+
+function summarize(entries) {
+  const result = {};
+  entries.forEach(e => {
+    if (!result[e.company]) result[e.company] = { clean:{}, damaged:{}, shipped:{}, planting:{} };
+    if (!result[e.company][e.type]) result[e.company][e.type] = {};
+    result[e.company][e.type][e.date] = (result[e.company][e.type][e.date]||0) + e.count;
+  });
+  return result;
+}
+
+// 日付×種別のエントリIDを引く（修正・削除用）
+function findEntryIds(company, type, date) {
+  return appData.entries.filter(e => e.company===company && e.type===type && e.date===date).map(e=>e.id);
+}
+
+function setFilter(f) { activeFilter = f; renderInventory(); }
+
+function renderInventory() {
+  const fb = document.getElementById('filter-bar');
+  fb.innerHTML = `<button class="ctag ${activeFilter==='all'?'active':''}" onclick="setFilter('all')">すべて</button>`;
+  appData.companies.forEach(c => {
+    fb.innerHTML += `<button class="ctag ${activeFilter===c?'active':''}" onclick="setFilter('${c}')">${c}</button>`;
+  });
+
+  const companies = activeFilter==='all' ? appData.companies : [activeFilter];
+  const summary = summarize(appData.entries);
+
+  let tc=0,td=0,ts=0,tp=0;
+  companies.forEach(c => {
+    const s = summary[c]||{clean:{},damaged:{},shipped:{},planting:{}};
+    tc += Object.values(s.clean||{}).reduce((a,b)=>a+b,0);
+    td += Object.values(s.damaged||{}).reduce((a,b)=>a+b,0);
+    ts += Object.values(s.shipped||{}).reduce((a,b)=>a+b,0);
+    tp += Object.values(s.planting||{}).reduce((a,b)=>a+b,0);
+  });
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="stat-card"><div class="lbl"><span class="dot dot-c"></span>きれいなにんにく</div><div class="val" style="color:#3B6D11">${fmt(tc)}<span class="unit">個</span></div></div>
+    <div class="stat-card"><div class="lbl"><span class="dot dot-d"></span>傷にんにく</div><div class="val" style="color:#D85A30">${fmt(td)}<span class="unit">個</span></div></div>
+    <div class="stat-card"><div class="lbl"><span class="dot dot-s"></span>出荷用にんにく</div><div class="val" style="color:#185FA5">${fmt(ts)}<span class="unit">個</span></div></div>
+    <div class="stat-card"><div class="lbl"><span class="dot dot-p"></span>植え込みにんにく</div><div class="val" style="color:#8B5E0A">${fmt(tp)}<span class="unit">個</span></div></div>
+  `;
+
+  const makeRows = (company, type, dateMap) => {
+    const dates = Object.keys(dateMap).sort();
+    if (!dates.length) return '<tr><td colspan="3" style="color:#aaa;font-size:12px">データなし</td></tr>';
+    let rows = dates.map(dt => {
+      const rowId = `row-${company}-${type}-${dt}`.replace(/[^\w-]/g,'_');
+      return `
+        <tr id="${rowId}">
+          <td style="color:#666">${formatDate(dt)}${deadlineTag(type, dt)}</td>
+          <td>
+            <span class="count-disp">${fmt(dateMap[dt])} 個</span>
+            <span class="inline-edit" id="edit-${rowId}">
+              <input type="number" min="0" step="1" value="${dateMap[dt]}" style="width:80px">
+              <button class="btn btn-save" onclick="saveEdit('${company}','${type}','${dt}','${rowId}')">保存</button>
+              <button class="btn btn-cancel" onclick="cancelEdit('${rowId}')">取消</button>
+            </span>
+          </td>
+          <td style="display:flex;gap:4px;padding:6px 12px">
+            <button class="btn btn-edit" onclick="startEdit('${rowId}')">修正</button>
+            <button class="btn btn-danger" onclick="deleteDate('${company}','${type}','${dt}')">削除</button>
+          </td>
+        </tr>`;
+    }).join('');
+    if (dates.length > 1) {
+      const total = dates.reduce((a,dt)=>a+dateMap[dt],0);
+      rows += `<tr class="total-row"><td>合計</td><td>${fmt(total)} 個</td><td></td></tr>`;
+    }
+    return rows;
+  };
+
+  const blocks = document.getElementById('company-blocks');
+  if (!companies.length) { blocks.innerHTML = '<p class="msg">企業を追加してください</p>'; return; }
+  blocks.innerHTML = companies.map(c => {
+    const s = summary[c]||{clean:{},damaged:{},shipped:{},planting:{}};
+    const totC = Object.values(s.clean||{}).reduce((a,b)=>a+b,0);
+    const totD = Object.values(s.damaged||{}).reduce((a,b)=>a+b,0);
+    const totS = Object.values(s.shipped||{}).reduce((a,b)=>a+b,0);
+    const totP = Object.values(s.planting||{}).reduce((a,b)=>a+b,0);
+    return `
+    <div class="company-block">
+      <div class="company-header" onclick="toggleDetail('d-${c}',this)">
+        <span class="company-name">🏢 ${c}</span>
+        <div class="company-totals">
+          <span class="badge badge-c">きれい ${fmt(totC)}個</span>
+          <span class="badge badge-d">傷 ${fmt(totD)}個</span>
+          <span class="badge badge-s">出荷 ${fmt(totS)}個</span>
+          <span class="badge badge-p">植え込み ${fmt(totP)}個</span>
+          <span class="chevron">▼</span>
+        </div>
+      </div>
+      <div class="company-detail detail-hidden" id="d-${c}">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-top:4px">
+          <div>
+            <div class="detail-label"><span class="dot dot-c" style="margin-right:4px"></span>きれいにんにく</div>
+            <table><thead><tr><th>日付</th><th>個数</th><th></th></tr></thead><tbody>${makeRows(c,'clean',s.clean||{})}</tbody></table>
+          </div>
+          <div>
+            <div class="detail-label"><span class="dot dot-d" style="margin-right:4px"></span>傷にんにく</div>
+            <table><thead><tr><th>日付</th><th>個数</th><th></th></tr></thead><tbody>${makeRows(c,'damaged',s.damaged||{})}</tbody></table>
+          </div>
+          <div>
+            <div class="detail-label"><span class="dot dot-s" style="margin-right:4px"></span>出荷用にんにく</div>
+            <table><thead><tr><th>日付</th><th>個数</th><th></th></tr></thead><tbody>${makeRows(c,'shipped',s.shipped||{})}</tbody></table>
+          </div>
+          <div>
+            <div class="detail-label"><span class="dot dot-p" style="margin-right:4px"></span>植え込みにんにく</div>
+            <table><thead><tr><th>日付</th><th>個数</th><th></th></tr></thead><tbody>${makeRows(c,'planting',s.planting||{})}</tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function startEdit(rowId) {
+  const row = document.getElementById(rowId);
+  row.querySelector('.count-disp').style.display = 'none';
+  const ed = row.querySelector('.inline-edit');
+  ed.style.display = 'inline-flex';
+  ed.querySelector('input').focus();
+}
+
+function cancelEdit(rowId) {
+  const row = document.getElementById(rowId);
+  row.querySelector('.count-disp').style.display = '';
+  row.querySelector('.inline-edit').style.display = 'none';
+}
+
+async function saveEdit(company, type, date, rowId) {
+  const row = document.getElementById(rowId);
+  const newCount = parseInt(row.querySelector('.inline-edit input').value);
+  if (isNaN(newCount) || newCount < 0) { alert('正しい個数を入力してください'); return; }
+
+  // 同日同種別の既存エントリを全削除してから新しい値で1件追加
+  const ids = findEntryIds(company, type, date);
+  for (const id of ids) {
+    await fetch(`/api/entry/${id}`, { method: 'DELETE' });
+  }
+  if (newCount > 0) {
+    await fetch('/api/entry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company, type, count: newCount, date, staff: '修正' })
+    });
+  }
+  fetchData();
+}
+
+async function deleteDate(company, type, date) {
+  if (!confirm(`${company}の${TYPE_LABEL[type]}（${formatDate(date)}）を削除しますか？`)) return;
+  const ids = findEntryIds(company, type, date);
+  for (const id of ids) {
+    await fetch(`/api/entry/${id}`, { method: 'DELETE' });
+  }
+  fetchData();
+}
+
+function toggleDetail(id, header) {
+  const el = document.getElementById(id);
+  const ch = header.querySelector('.chevron');
+  el.classList.toggle('detail-hidden');
+  ch.classList.toggle('open');
+}
+
+function renderHistory() {
+  const sel = document.getElementById('hist-filter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="all">すべての企業</option>' + appData.companies.map(c=>`<option value="${c}">${c}</option>`).join('');
+  sel.value = cur||'all';
+  const filter = sel.value;
+  const items = appData.entries.filter(e=>filter==='all'||e.company===filter);
+  const list = document.getElementById('hist-list');
+  if (!items.length) { list.innerHTML = '<p class="msg">履歴がありません</p>'; return; }
+  list.innerHTML = items.map(e=>`
+    <div class="hist-item">
+      <div class="hist-left">
+        <div class="hist-company">🏢 ${e.company}</div>
+        <div class="hist-meta">
+          <span class="badge ${TYPE_BADGE[e.type]}" style="margin-right:6px">${TYPE_LABEL[e.type]}</span>
+          ${fmt(e.count)} 個 ／ ${formatDate(e.date)} ／ 担当: ${e.staff} ／ 登録: ${e.createdAt}
+        </div>
+      </div>
+      <button class="btn btn-danger" onclick="deleteEntry(${e.id})">削除</button>
+    </div>
+  `).join('');
+}
+
+function renderSettings() {
+  const el = document.getElementById('company-list-settings');
+  if (!appData.companies.length) { el.innerHTML = '<p class="msg">企業がありません</p>'; return; }
+  el.innerHTML = '<div class="form-sec"><h3>登録企業一覧</h3>' +
+    appData.companies.map(c=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0ec">
+        <span style="font-weight:500">🏢 ${c}</span>
+        <button class="btn btn-danger" onclick="deleteCompany('${c}')">削除</button>
+      </div>`).join('') + '</div>';
+  const sel = document.getElementById('sched-company');
+  if (sel) sel.innerHTML = '<option value="all">全企業</option>' + appData.companies.map(c=>`<option value="${c}">${c}</option>`).join('');
+}
+
+async function addCompany() {
+  const name = document.getElementById('new-company').value.trim();
+  if (!name) return;
+  const res = await fetch('/api/company', { method:'POST', headers: authHeader(), body: JSON.stringify({name}) });
+  if (res.ok) { document.getElementById('new-company').value=''; fetchData(); }
+  else { const e=await res.json(); alert(e.error); }
+}
+
+async function deleteCompany(name) {
+  if (!confirm(`「${name}」を削除しますか？関連データも消えます。`)) return;
+  await fetch(`/api/company/${encodeURIComponent(name)}`, { method:'DELETE', headers: authHeader() });
+  fetchData();
+}
+
+async function deleteEntry(id) {
+  if (!confirm('この入力履歴を削除しますか？')) return;
+  await fetch(`/api/entry/${id}`, { method:'DELETE', headers: authHeader() });
+  fetchData();
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+function openCloseModal() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('close-date').value = today;
+  document.getElementById('close-modal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('close-modal').classList.remove('show');
+}
+
+function doExport() {
+  const date = document.getElementById('close-date').value;
+  if (!date) { alert('日付を選択してください'); return; }
+
+  const TYPES = ['clean', 'damaged', 'shipped', 'planting'];
+  const TYPE_JP = { clean: 'きれい', damaged: '傷', shipped: '出荷用', planting: '植え込み' };
+  const companies = appData.companies;
+  const [, m, d] = date.split('-');
+  const dateLabel = `${parseInt(m)}月${parseInt(d)}日`;
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // 残り日数ラベル（きれい=5日、植え込み=4日、日を含めてカウント）
+  function dayStatus(type, dateStr) {
+    if (type !== 'clean' && type !== 'planting') return '';
+    const entry = new Date(dateStr); entry.setHours(0,0,0,0);
+    const dayNum = Math.floor((today - entry) / 86400000) + 1;
+    if (type === 'clean') {
+      const rem = 5 - dayNum;
+      if (rem > 0) return `植え込みまであと${rem}日`;
+      if (rem === 0) return `★ 本日植え込み日(5日目)`;
+      return `⚠ 植え込み期限超過(${-rem}日)`;
+    }
+    if (type === 'planting') {
+      const rem = 4 - dayNum;
+      if (rem > 0) return `収穫まであと${rem}日`;
+      return `★ 収穫可能(${dayNum}日目)`;
+    }
+    return '';
+  }
+
+  // ── シート1：日次集計 ──────────────────────
+  const dayEntries = appData.entries.filter(e => e.date === date);
+  const dayMap = {};
+  companies.forEach(c => { dayMap[c] = { clean:0, damaged:0, shipped:0, planting:0 }; });
+  dayEntries.forEach(e => {
+    if (dayMap[e.company] && dayMap[e.company][e.type] !== undefined)
+      dayMap[e.company][e.type] += e.count;
+  });
+  const dayRows = [
+    [`にんにく在庫　日次集計　${dateLabel}`],
+    [],
+    ['企業名', 'きれい（個）', '傷（個）', '出荷用（個）', '植え込み（個）', '合計（個）']
+  ];
+  companies.forEach(c => {
+    const r = dayMap[c];
+    const total = TYPES.reduce((s, t) => s + r[t], 0);
+    dayRows.push([c, r.clean, r.damaged, r.shipped, r.planting, total]);
+  });
+  const dayTotals = TYPES.map(t => companies.reduce((s,c) => s + dayMap[c][t], 0));
+  dayRows.push(['合計', ...dayTotals, dayTotals.reduce((a,b)=>a+b,0)]);
+
+  // ── シート2：在庫明細（入庫日別・残り日数付き）──
+  // 企業×種別×日付ごとに集計
+  const detailMap = {}; // key: company → type → date → count
+  appData.entries.forEach(e => {
+    if (!detailMap[e.company]) detailMap[e.company] = {};
+    if (!detailMap[e.company][e.type]) detailMap[e.company][e.type] = {};
+    detailMap[e.company][e.type][e.date] = (detailMap[e.company][e.type][e.date] || 0) + e.count;
+  });
+
+  const detailRows = [
+    [`にんにく在庫　在庫明細（出力日：${dateLabel}）`],
+    [],
+    ['企業名', '種別', '入庫日', '個数（個）', '状態']
+  ];
+  companies.forEach(c => {
+    const typeData = detailMap[c] || {};
+    let companyFirst = true;
+    TYPES.forEach(type => {
+      const dateData = typeData[type] || {};
+      const dates = Object.keys(dateData).sort();
+      if (!dates.length) return;
+      let typeFirst = true;
+      dates.forEach(dt => {
+        const [,dm,dd] = dt.split('-');
+        const dtLabel = `${parseInt(dm)}月${parseInt(dd)}日`;
+        detailRows.push([
+          companyFirst ? c : '',
+          typeFirst ? TYPE_JP[type] : '',
+          dtLabel,
+          dateData[dt],
+          dayStatus(type, dt)
+        ]);
+        companyFirst = false;
+        typeFirst = false;
+      });
+      // 種別小計
+      const subtotal = dates.reduce((s, dt) => s + dateData[dt], 0);
+      detailRows.push(['', `${TYPE_JP[type]} 小計`, '', subtotal, '']);
+      detailRows.push([]); // 空行
+    });
+    // 企業合計
+    const compTotal = TYPES.reduce((s, type) => {
+      return s + Object.values(typeData[type] || {}).reduce((a,b)=>a+b, 0);
+    }, 0);
+    detailRows.push([`${c} 合計`, '', '', compTotal, '']);
+    detailRows.push([]); // 企業間の空行
+  });
+
+  // ── シート3：累計 ────────────────────────
+  const cumMap = {};
+  companies.forEach(c => { cumMap[c] = { clean:0, damaged:0, shipped:0, planting:0 }; });
+  appData.entries.forEach(e => {
+    if (cumMap[e.company] && cumMap[e.company][e.type] !== undefined)
+      cumMap[e.company][e.type] += e.count;
+  });
+  const cumRows = [
+    ['にんにく在庫　累計（全期間）'],
+    [],
+    ['企業名', 'きれい（個）', '傷（個）', '出荷用（個）', '植え込み（個）', '合計（個）']
+  ];
+  companies.forEach(c => {
+    const r = cumMap[c];
+    const total = TYPES.reduce((s, t) => s + r[t], 0);
+    cumRows.push([c, r.clean, r.damaged, r.shipped, r.planting, total]);
+  });
+  const cumTotals = TYPES.map(t => companies.reduce((s,c) => s + cumMap[c][t], 0));
+  cumRows.push(['合計', ...cumTotals, cumTotals.reduce((a,b)=>a+b,0)]);
+
+  // ── ワークブック作成 ───────────────────────
+  const wb = XLSX.utils.book_new();
+
+  function makeSheet(rows, colWidths) {
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = colWidths;
+    return ws;
+  }
+
+  XLSX.utils.book_append_sheet(wb, makeSheet(dayRows,
+    [{wch:16},{wch:13},{wch:13},{wch:13},{wch:13},{wch:13}]),
+    `日次_${m}月${parseInt(d)}日`);
+  XLSX.utils.book_append_sheet(wb, makeSheet(detailRows,
+    [{wch:16},{wch:12},{wch:12},{wch:12},{wch:24}]),
+    '在庫明細');
+  XLSX.utils.book_append_sheet(wb, makeSheet(cumRows,
+    [{wch:16},{wch:13},{wch:13},{wch:13},{wch:13},{wch:13}]),
+    '累計');
+
+  const filename = `にんにく在庫_${date}.xlsx`;
+  XLSX.writeFile(wb, filename);
+
+  closeModal();
+  showToast(`✓ ${dateLabel}のExcelを出力しました`);
+}
+
+function showToast(msg) {
+  // 簡易トースト（admin画面用）
+  const t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position:'fixed', bottom:'30px', left:'50%', transform:'translateX(-50%)',
+    background:'#27500A', color:'white', padding:'12px 24px', borderRadius:'30px',
+    fontSize:'14px', zIndex:'999', whiteSpace:'nowrap', boxShadow:'0 4px 12px rgba(0,0,0,0.2)'
+  });
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ── スケジュール生成（Gemini）────────────────
+const PROCESS_RULES = `【作業ルール】
+・きれいにんにく：記入日含め5日目に植え込み（冷蔵保管）
+・植え込み：植えた日含め4日目から収穫可能（休日も日数カウント、作業は平日に実施）
+・収穫当日：根切り・芽切り、加熱処理（電子レンジ700W 1分、15個単位）
+・加熱済み：当日限り有効（翌日持ち越し不可）
+・熟成発送：245個で1ロット、発送11日後に返却
+・仕分け比率：きれい：傷：破棄＝5：4：1
+・収穫後比率：きれい：傷＝9：1
+・加工量：黒にんにく15個/パック・16パック/人/日、醤油・酢漬け10パック/人/日、皮茶30パック/人/日
+・労働時間：9:30〜15:00（昼休み12:00〜13:00）、土日祝休み`;
+
+function buildInventorySummary(company) {
+  const entries = company === 'all' ? appData.entries : appData.entries.filter(e => e.company === company);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const TYPE_JP = { clean:'きれい', damaged:'傷', shipped:'出荷用', planting:'植え込み' };
+
+  const byDate = {};
+  entries.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = { clean:0, damaged:0, shipped:0, planting:0 };
+    if (byDate[e.date][e.type] !== undefined) byDate[e.date][e.type] += e.count;
+  });
+
+  const totals = { clean:0, damaged:0, shipped:0, planting:0 };
+  entries.forEach(e => { if (totals[e.type] !== undefined) totals[e.type] += e.count; });
+
+  let lines = [`【在庫状況】${company === 'all' ? '全企業合計' : company}`];
+  lines.push(`きれい：${totals.clean}個 / 傷：${totals.damaged}個 / 植え込み中：${totals.planting}個 / 出荷用：${totals.shipped}個`);
+  lines.push('');
+  lines.push('【日付別明細（残り日数付き）】');
+  Object.keys(byDate).sort().forEach(d => {
+    const r = byDate[d];
+    const entry = new Date(d); entry.setHours(0,0,0,0);
+    const dayNum = Math.floor((today - entry) / 86400000) + 1;
+    const parts = [];
+    if (r.clean) {
+      const rem = 5 - dayNum;
+      parts.push(`きれい${r.clean}個（${rem > 0 ? '植え込みまであと'+rem+'日' : rem === 0 ? '本日植え込み日' : '植え込み期限超過'+(- rem)+'日'}）`);
+    }
+    if (r.planting) {
+      const rem = 4 - dayNum;
+      parts.push(`植え込み${r.planting}個（${rem > 0 ? '収穫まであと'+rem+'日' : '収穫可能'+dayNum+'日目'}）`);
+    }
+    if (r.damaged) parts.push(`傷${r.damaged}個`);
+    if (parts.length) {
+      const [,m,dd] = d.split('-');
+      lines.push(`  ${parseInt(m)}月${parseInt(dd)}日：${parts.join(' / ')}`);
+    }
+  });
+  return lines.join('\n');
+}
+
+async function generateSchedule() {
+  const month = document.getElementById('sched-month').value;
+  const company = document.getElementById('sched-company').value;
+  const goal = document.getElementById('sched-goal').value.trim();
+  if (!month) { alert('年月を選択してください'); return; }
+
+  const [y, m] = month.split('-');
+  const btn = document.getElementById('sched-btn');
+  btn.disabled = true; btn.textContent = '生成中...';
+  document.getElementById('sched-output').style.display = 'none';
+  document.getElementById('sched-error').style.display = 'none';
+  document.getElementById('sched-loading').style.display = 'block';
+
+  const prompt = `あなたはにんにく加工事業の現場指導員です。
+以下の在庫データと作業ルールをもとに、${y}年${parseInt(m)}月の平日作業スケジュールを作成してください。
+${goal ? `目標・補足：${goal}` : ''}
+
+${buildInventorySummary(company)}
+
+${PROCESS_RULES}
+
+以下の形式で作成してください：
+1. 日付ごとの作業スケジュール表（土日祝は「休み」と記載。日本の祝日を正しく反映）
+2. ロット管理表（皮むき日→植え込み予定日→収穫予定日→加熱→発送→返却）
+3. 注意事項・アドバイス`;
+
+  try {
+    const res = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: authHeader(),
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || 'エラーが発生しました');
+
+    document.getElementById('sched-meta').textContent = `${y}年${parseInt(m)}月 / ${company === 'all' ? '全企業' : company} / ${new Date().toLocaleString('ja-JP')}生成`;
+    document.getElementById('sched-result').textContent = data.text;
+    document.getElementById('sched-output').style.display = 'block';
+  } catch(e) {
+    const errEl = document.getElementById('sched-error');
+    errEl.textContent = `生成に失敗しました：${e.message}`;
+    errEl.style.display = 'block';
+  } finally {
+    document.getElementById('sched-loading').style.display = 'none';
+    btn.disabled = false; btn.textContent = '🤖 スケジュール生成';
+  }
+}
+
+function copySchedule() {
+  navigator.clipboard.writeText(document.getElementById('sched-result').textContent)
+    .then(() => showToast('✓ クリップボードにコピーしました'));
+}
+
+document.getElementById('sched-month').value = new Date().toISOString().slice(0, 7);
+
+async function doLogout() {
+  await fetch('/api/logout', { method:'POST', headers: authHeader() });
+  sessionStorage.removeItem('garlic-token');
+  sessionStorage.removeItem('garlic-role');
+  location.href = '/login.html';
+}
+
+document.getElementById('input-url').textContent = `http://${location.hostname}:3000/login.html`;
+fetchData();
+setInterval(fetchData, 10000);
+</script>
+<!-- 締めモーダル -->
+<div class="modal-overlay" id="close-modal">
+  <div class="modal">
+    <h2>🔒 日次締め・Excel出力</h2>
+    <p>締める日付を選択してください。その日の集計と全データの累計をExcelファイルに出力します。</p>
+    <input type="date" id="close-date">
+    <div class="modal-btns">
+      <button class="btn" onclick="closeModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="doExport()">📥 Excel出力</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

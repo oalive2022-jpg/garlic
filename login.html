@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧄 にんにく在庫管理 ログイン</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #f0f4eb; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: 'Hiragino Sans', 'Meiryo', sans-serif; }
+.card { background: white; border-radius: 20px; padding: 40px 36px 36px; width: 92%; max-width: 380px; box-shadow: 0 6px 30px rgba(0,0,0,0.10); }
+.logo { text-align: center; font-size: 48px; margin-bottom: 8px; }
+h1 { text-align: center; font-size: 18px; font-weight: 700; color: #27500A; margin-bottom: 4px; }
+.sub { text-align: center; font-size: 12px; color: #999; margin-bottom: 32px; }
+label { font-size: 13px; font-weight: 600; color: #444; display: block; margin-bottom: 6px; }
+.pw-wrap { position: relative; margin-bottom: 24px; }
+input[type="password"], input[type="text"] {
+  width: 100%; height: 48px; border: 1.5px solid #d8ddd0; border-radius: 10px;
+  padding: 0 44px 0 14px; font-size: 16px; outline: none; transition: border-color .2s;
+}
+input:focus { border-color: #5a9a1f; }
+.toggle-pw { position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; color: #aaa; font-size: 18px; padding: 4px; }
+.btn-login { width: 100%; height: 50px; background: #3a7d11; color: white; border: none;
+  border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; transition: background .2s; }
+.btn-login:hover { background: #2c5e0c; }
+.btn-login:active { background: #1f4208; }
+.error { background: #FAECE7; color: #7a1a0a; border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; margin-bottom: 16px; display: none; text-align: center; }
+.error.show { display: block; }
+.loading { opacity: .6; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🧄</div>
+  <h1>にんにく在庫管理</h1>
+  <p class="sub">パスワードを入力してログイン</p>
+  <div class="error" id="err-msg">パスワードが違います</div>
+  <label>パスワード</label>
+  <div class="pw-wrap">
+    <input type="password" id="password" placeholder="パスワードを入力" autocomplete="current-password">
+    <button class="toggle-pw" onclick="togglePw()" type="button" tabindex="-1">👁</button>
+  </div>
+  <button class="btn-login" id="login-btn" onclick="doLogin()">ログイン</button>
+</div>
+
+<script>
+document.getElementById('password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+function togglePw() {
+  const inp = document.getElementById('password');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+async function doLogin() {
+  const password = document.getElementById('password').value;
+  if (!password) return;
+  const btn = document.getElementById('login-btn');
+  btn.classList.add('loading');
+  btn.textContent = '確認中...';
+  document.getElementById('err-msg').classList.remove('show');
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      sessionStorage.setItem('garlic-token', data.token);
+      sessionStorage.setItem('garlic-role', data.role);
+      if (data.role === 'admin') {
+        location.href = '/admin.html';
+      } else {
+        location.href = '/input.html';
+      }
+    } else {
+      throw new Error();
+    }
+  } catch {
+    document.getElementById('err-msg').classList.add('show');
+    btn.classList.remove('loading');
+    btn.textContent = 'ログイン';
+    document.getElementById('password').value = '';
+    document.getElementById('password').focus();
+  }
+}
+</script>
+</body>
+</html>
