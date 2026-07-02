@@ -225,12 +225,14 @@ app.post('/api/company/:name/password', requireAdmin, async (req, res) => {
 });
 
 // ── 申し送り：予測スケジュールAPI ──────────────
+// company を省略した場合は「全社合計」の予測として扱う
 app.get('/api/predictions', requireAuth, async (req, res) => {
   const config = getConfig();
-  const { start, end } = req.query;
+  const { start, end, company } = req.query;
   try {
     let path = 'garlic_predictions?select=*&order=date.asc';
     if (start && end) path += `&date=gte.${start}&date=lte.${end}`;
+    if (company) path += `&company=eq.${encodeURIComponent(company)}`;
     const r = await supabaseRequest('GET', path, null, config);
     res.json({ predictions: r.data || [] });
   } catch(e) {
@@ -238,16 +240,17 @@ app.get('/api/predictions', requireAuth, async (req, res) => {
   }
 });
 
-// 予測値を登録・上書き保存（同じ日付+種別があれば更新）
+// 予測値を登録・上書き保存（同じ日付+種別+企業があれば更新。companyを省略/nullなら全社合計扱い）
 app.post('/api/prediction', requireAdmin, async (req, res) => {
-  const { date, type, predicted_count, note } = req.body;
+  const { date, type, predicted_count, note, company } = req.body;
   if (!date || !type || predicted_count === undefined || predicted_count === '') {
     return res.status(400).json({ error: '入力不足です' });
   }
   const config = getConfig();
   try {
-    const existing = await supabaseRequest('GET',
-      `garlic_predictions?date=eq.${date}&type=eq.${type}&select=id`, null, config);
+    let findPath = `garlic_predictions?date=eq.${date}&type=eq.${type}&select=id`;
+    findPath += company ? `&company=eq.${encodeURIComponent(company)}` : `&company=is.null`;
+    const existing = await supabaseRequest('GET', findPath, null, config);
     if (existing.data && existing.data.length > 0) {
       await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
         { predicted_count: parseInt(predicted_count), note: note || null }, config);
@@ -255,7 +258,8 @@ app.post('/api/prediction', requireAdmin, async (req, res) => {
       await supabaseRequest('POST', 'garlic_predictions', {
         id: Date.now() + Math.floor(Math.random() * 1000),
         date, type, predicted_count: parseInt(predicted_count),
-        note: note || null, created_at: new Date().toISOString()
+        note: note || null, company: company || null,
+        created_at: new Date().toISOString()
       }, config);
     }
     res.json({ ok: true });
@@ -274,21 +278,27 @@ app.delete('/api/prediction/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// ── 申し送り：実測値の日付×種別 集計API ─────────
-// 全企業合計で、日付・種別ごとの実測数量を返す（predictionsとの突合用）
+// ── 申し送り：実測値の日付×種別（×企業）集計API ─────
+// company指定なし → 全社合計＋企業別内訳の両方を返す
+// company指定あり → その企業だけに絞った合計を返す
 app.get('/api/actuals', requireAuth, async (req, res) => {
   const config = getConfig();
-  const { start, end } = req.query;
+  const { start, end, company } = req.query;
   if (!start || !end) return res.status(400).json({ error: '期間指定が必要です(start, end)' });
   try {
-    const r = await supabaseRequest('GET',
-      `garlic_entries?select=date,type,count&date=gte.${start}&date=lte.${end}`, null, config);
-    const totals = {};
+    let path = `garlic_entries?select=date,type,count,company&date=gte.${start}&date=lte.${end}`;
+    if (company) path += `&company=eq.${encodeURIComponent(company)}`;
+    const r = await supabaseRequest('GET', path, null, config);
+
+    const totals = {};       // date||type -> 合計（company指定時はその企業のみ）
+    const byCompany = {};    // date||type||company -> 合計
     (r.data || []).forEach(e => {
       const key = `${e.date}||${e.type}`;
       totals[key] = (totals[key] || 0) + (e.count || 0);
+      const ckey = `${e.date}||${e.type}||${e.company}`;
+      byCompany[ckey] = (byCompany[ckey] || 0) + (e.count || 0);
     });
-    res.json({ totals });
+    res.json({ totals, byCompany });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
@@ -307,13 +317,14 @@ app.post('/api/prediction-import', requireImportKey, async (req, res) => {
   const results = [];
   try {
     for (const p of predictions) {
-      const { date, type, predicted_count, note } = p;
+      const { date, type, predicted_count, note, company } = p;
       if (!date || !VALID_TYPES.includes(type) || predicted_count === undefined || predicted_count === '') {
-        results.push({ date, type, ok: false, error: '入力不足または種別が不正です' });
+        results.push({ date, type, company: company || null, ok: false, error: '入力不足または種別が不正です' });
         continue;
       }
-      const existing = await supabaseRequest('GET',
-        `garlic_predictions?date=eq.${date}&type=eq.${type}&select=id`, null, config);
+      let findPath = `garlic_predictions?date=eq.${date}&type=eq.${type}&select=id`;
+      findPath += company ? `&company=eq.${encodeURIComponent(company)}` : `&company=is.null`;
+      const existing = await supabaseRequest('GET', findPath, null, config);
       if (existing.data && existing.data.length > 0) {
         await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
           { predicted_count: parseInt(predicted_count), note: note || null }, config);
@@ -321,10 +332,11 @@ app.post('/api/prediction-import', requireImportKey, async (req, res) => {
         await supabaseRequest('POST', 'garlic_predictions', {
           id: Date.now() + Math.floor(Math.random() * 1000),
           date, type, predicted_count: parseInt(predicted_count),
-          note: note || null, created_at: new Date().toISOString()
+          note: note || null, company: company || null,
+          created_at: new Date().toISOString()
         }, config);
       }
-      results.push({ date, type, ok: true });
+      results.push({ date, type, company: company || null, ok: true });
     }
     const failed = results.filter(r => !r.ok);
     res.json({
@@ -338,21 +350,37 @@ app.post('/api/prediction-import', requireImportKey, async (req, res) => {
 });
 
 // Custom GPTが「今どの週の実測がどこまで埋まっているか」を確認するための参照API
+// company を指定すればその企業だけ、省略すれば全社合計＋企業一覧を返す
 app.get('/api/actuals-for-gpt', requireImportKey, async (req, res) => {
   const config = getConfig();
-  const { start, end } = req.query;
+  const { start, end, company } = req.query;
   if (!start || !end) return res.status(400).json({ error: '期間指定が必要です(start, end)' });
   try {
-    const r = await supabaseRequest('GET',
-      `garlic_entries?select=date,type,count&date=gte.${start}&date=lte.${end}`, null, config);
+    let entriesPath = `garlic_entries?select=date,type,count,company&date=gte.${start}&date=lte.${end}`;
+    if (company) entriesPath += `&company=eq.${encodeURIComponent(company)}`;
+    const r = await supabaseRequest('GET', entriesPath, null, config);
+
     const totals = {};
+    const byCompany = {};
     (r.data || []).forEach(e => {
       const key = `${e.date}||${e.type}`;
       totals[key] = (totals[key] || 0) + (e.count || 0);
+      const ckey = `${e.date}||${e.type}||${e.company}`;
+      byCompany[ckey] = (byCompany[ckey] || 0) + (e.count || 0);
     });
-    const predRes = await supabaseRequest('GET',
-      `garlic_predictions?select=*&date=gte.${start}&date=lte.${end}`, null, config);
-    res.json({ actual_totals: totals, previous_predictions: predRes.data || [] });
+
+    let predPath = `garlic_predictions?select=*&date=gte.${start}&date=lte.${end}`;
+    if (company) predPath += `&company=eq.${encodeURIComponent(company)}`;
+    const predRes = await supabaseRequest('GET', predPath, null, config);
+
+    const companiesRes = await supabaseRequest('GET', 'garlic_companies?select=name&order=id.asc', null, config);
+
+    res.json({
+      companies: (companiesRes.data || []).map(c => c.name),
+      actual_totals: totals,
+      actual_by_company: byCompany,
+      previous_predictions: predRes.data || []
+    });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
