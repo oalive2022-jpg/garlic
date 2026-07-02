@@ -52,6 +52,15 @@ table.sched tr:last-child td { border-bottom: none; }
 .save-status { font-size: 12px; color: #3B6D11; align-self: center; }
 
 .type-th { white-space: nowrap; }
+
+.task-master-box { background: white; border: 1px solid #e4e8dc; border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+.task-master-box h3 { font-size: 13.5px; font-weight: 700; margin-bottom: 10px; }
+.task-chip { display: inline-flex; align-items: center; gap: 6px; background: #f7f9f4; border: 1px solid #e4e8dc; border-radius: 20px; padding: 5px 6px 5px 12px; font-size: 12.5px; margin: 0 6px 6px 0; }
+.task-chip .linked { color: #888; font-size: 11px; }
+.task-chip button { border: none; background: #fbeceb; color: #b33a3a; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; cursor: pointer; line-height: 1; }
+.task-add-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.task-add-row input, .task-add-row select { height: 32px; border: 1px solid #d0d4c8; border-radius: 6px; padding: 0 8px; font-size: 12.5px; }
+.task-add-row button { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid #3B6D11; background: #3B6D11; color: white; font-size: 12.5px; cursor: pointer; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -74,7 +83,22 @@ table.sched tr:last-child td { border-bottom: none; }
 <main>
 
   <div class="hint-box">
-    💡 使い方：①チャッピーが出した向こう1週間の予測数を「予測」欄に入力して保存 → ②実測は在庫管理アプリのデータから自動集計されます → ③週末に「Excel出力」して、その週の予測vs実測をチャッピーに再投入すると、次週の予測精度が上がります。
+    💡 使い方：①チャッピーが出した向こう1週間の作業予定・数量を「予測」欄に入力して保存 → ②実測は在庫管理アプリのデータから自動集計されます → ③週末に「Excel出力」して、その週の予測vs実測をチャッピーに再投入すると、次週の予測精度が上がります。
+  </div>
+
+  <div class="task-master-box">
+    <h3>🔧 作業マスタ(この一覧の作業について予測・実測を管理します)</h3>
+    <div id="task-chips">読み込み中...</div>
+    <div class="task-add-row">
+      <input type="text" id="new-task-name" placeholder="作業名（例：醤油酢漬け）" style="width:160px">
+      <select id="new-task-linked">
+        <option value="clean">きれい実測と紐づけ</option>
+        <option value="damaged">傷実測と紐づけ</option>
+        <option value="shipped">出荷用実測と紐づけ</option>
+        <option value="planting">植え込み実測と紐づけ</option>
+      </select>
+      <button onclick="addTask()">＋ 作業を追加</button>
+    </div>
   </div>
 
   <div class="week-bar">
@@ -109,14 +133,14 @@ function authHeaders() {
 
 const TYPE_LABEL = { clean: 'きれい', damaged: '傷', shipped: '出荷用', planting: '植え込み' };
 const TYPE_DOT = { clean: 'dot-c', damaged: 'dot-d', shipped: 'dot-s', planting: 'dot-p' };
-const TYPES = ['clean', 'damaged', 'shipped', 'planting'];
 const WEEKDAYS = ['日','月','火','水','木','金','土'];
 
-let predictions = {};   // key: date||type||(company|__ALL__) -> {id, predicted_count, note, company}
+let predictions = {};   // key: date||task_name||(company|__ALL__) -> {id, predicted_count, note, company, type, task}
 let actualsTotal = {};  // key: date||type -> 全社合計
 let actualsByCompany = {}; // key: date||type||company -> 企業別
 let weekDates = [];
 let companyList = [];
+let taskMaster = [];    // [{id, task_name, linked_type, sort_order}]
 
 function currentCompany() {
   return document.getElementById('company-filter').value; // '' = 全社合計
@@ -132,6 +156,52 @@ async function loadCompanyList() {
       companyList.map(c => `<option value="${c}">${c}</option>`).join('');
     sel.value = prev && companyList.includes(prev) ? prev : '';
   } catch(e) { /* 企業一覧が取れなくても致命的ではないので握りつぶす */ }
+}
+
+async function loadTaskMaster() {
+  try {
+    const data = await fetch('/api/task-master', { headers: authHeaders() }).then(r => r.json());
+    taskMaster = data.tasks || [];
+  } catch(e) { taskMaster = []; }
+  renderTaskChips();
+}
+
+function renderTaskChips() {
+  const box = document.getElementById('task-chips');
+  if (taskMaster.length === 0) {
+    box.innerHTML = '<span style="font-size:12.5px;color:#999">まだ作業が登録されていません。下から追加してください。</span>';
+    return;
+  }
+  box.innerHTML = taskMaster.map(t => `
+    <span class="task-chip">
+      <span class="dot ${TYPE_DOT[t.linked_type]}"></span>${t.task_name}
+      <span class="linked">(${TYPE_LABEL[t.linked_type]}実測)</span>
+      <button onclick="deleteTask(${t.id})" title="削除">×</button>
+    </span>`).join('');
+}
+
+async function addTask() {
+  const nameEl = document.getElementById('new-task-name');
+  const linkedEl = document.getElementById('new-task-linked');
+  const task_name = nameEl.value.trim();
+  if (!task_name) { alert('作業名を入力してください'); return; }
+  try {
+    const r = await fetch('/api/task-master', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ task_name, linked_type: linkedEl.value, sort_order: taskMaster.length + 1 })
+    }).then(r => r.json());
+    if (r.error) { alert(r.error); return; }
+    nameEl.value = '';
+    await loadTaskMaster();
+    renderDays();
+  } catch(e) { alert('追加に失敗しました'); }
+}
+
+async function deleteTask(id) {
+  if (!confirm('この作業を作業マスタから削除しますか？(過去の予測データは残ります)')) return;
+  await fetch(`/api/task-master/${id}`, { method: 'DELETE', headers: authHeaders() });
+  await loadTaskMaster();
+  renderDays();
 }
 
 function toDateStr(d) {
@@ -181,7 +251,8 @@ async function loadWeek() {
   predictions = {};
   (predRes.predictions || []).forEach(p => {
     const companyKey = p.company || '__ALL__';
-    predictions[`${p.date}||${p.type}||${companyKey}`] = p;
+    const taskKey = p.task || '__NOTASK__';
+    predictions[`${p.date}||${taskKey}||${companyKey}`] = p;
   });
   actualsTotal = actRes.totals || {};
   actualsByCompany = actRes.byCompany || {};
@@ -195,18 +266,23 @@ function renderDays() {
   const container = document.getElementById('days-container');
   const scopeLabel = company ? `【${company}】の予測・実測` : '【全社合計】の予測・実測';
 
+  if (taskMaster.length === 0) {
+    container.innerHTML = '<div style="font-size:13px;color:#999;padding:20px;text-align:center">上の「作業マスタ」に作業を追加すると、ここに週間予定表が表示されます</div>';
+    return;
+  }
+
   container.innerHTML = `<div style="font-size:12.5px;color:#666;margin-bottom:10px;font-weight:600">${scopeLabel}</div>` +
     weekDates.map(d => {
     const dateStr = toDateStr(d);
     const wd = WEEKDAYS[d.getDay()];
-    const rows = TYPES.map(type => {
-      const key = `${dateStr}||${type}||${companyKey}`;
+    const rows = taskMaster.map(t => {
+      const key = `${dateStr}||${t.task_name}||${companyKey}`;
       const pred = predictions[key];
       const predVal = pred ? pred.predicted_count : '';
       const noteVal = pred && pred.note ? pred.note : '';
       const actualVal = company
-        ? (actualsByCompany[`${dateStr}||${type}||${company}`] || 0)
-        : (actualsTotal[`${dateStr}||${type}`] || 0);
+        ? (actualsByCompany[`${dateStr}||${t.linked_type}||${company}`] || 0)
+        : (actualsTotal[`${dateStr}||${t.linked_type}`] || 0);
 
       let diffHtml;
       if (pred === undefined || predVal === '') {
@@ -220,11 +296,11 @@ function renderDays() {
 
       return `
         <tr>
-          <td><span class="dot ${TYPE_DOT[type]}"></span>${TYPE_LABEL[type]}</td>
-          <td><input type="number" class="pred-input" data-date="${dateStr}" data-type="${type}" data-field="pred" value="${predVal}" placeholder="—"></td>
+          <td><span class="dot ${TYPE_DOT[t.linked_type]}"></span>${t.task_name}</td>
+          <td><input type="number" class="pred-input" data-date="${dateStr}" data-task="${t.task_name}" data-type="${t.linked_type}" value="${predVal}" placeholder="—"></td>
           <td class="actual-val">${actualVal}</td>
           <td>${diffHtml}</td>
-          <td><input type="text" class="note-input" data-date="${dateStr}" data-type="${type}" data-field="note" value="${noteVal}" placeholder="メモ"></td>
+          <td><input type="text" class="note-input" data-date="${dateStr}" data-task="${t.task_name}" value="${noteVal}" placeholder="メモ"></td>
         </tr>`;
     }).join('');
 
@@ -233,7 +309,7 @@ function renderDays() {
         <div class="day-head">${dateStr} <span class="wd">(${wd})</span></div>
         <table class="sched">
           <tr>
-            <th class="type-th">種別</th>
+            <th class="type-th">作業</th>
             <th class="type-th">予測(チャッピー)</th>
             <th class="type-th">実測(自動集計)</th>
             <th class="type-th">差分</th>
@@ -256,14 +332,15 @@ async function saveAllPredictions() {
     const val = input.value;
     if (val === '') return;
     const date = input.dataset.date;
+    const task = input.dataset.task;
     const type = input.dataset.type;
-    const noteInput = document.querySelector(`.note-input[data-date="${date}"][data-type="${type}"]`);
+    const noteInput = document.querySelector(`.note-input[data-date="${date}"][data-task="${CSS.escape(task)}"]`);
     const note = noteInput ? noteInput.value : '';
     jobs.push(
       fetch('/api/prediction', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ date, type, predicted_count: val, note, company: company || null })
+        body: JSON.stringify({ date, type, task, predicted_count: val, note, company: company || null })
       })
     );
   });
@@ -281,25 +358,25 @@ async function saveAllPredictions() {
 function exportExcel() {
   const company = currentCompany();
   const companyKey = company || '__ALL__';
-  const rows = [['日付', '曜日', '企業', '種別', '予測(チャッピー)', '実測(自動集計)', '差分', 'メモ']];
+  const rows = [['日付', '曜日', '企業', '作業', '紐づく種別', '予測(チャッピー)', '実測(自動集計)', '差分', 'メモ']];
   weekDates.forEach(d => {
     const dateStr = toDateStr(d);
     const wd = WEEKDAYS[d.getDay()];
-    TYPES.forEach(type => {
-      const key = `${dateStr}||${type}||${companyKey}`;
+    taskMaster.forEach(t => {
+      const key = `${dateStr}||${t.task_name}||${companyKey}`;
       const pred = predictions[key];
       const predVal = pred ? pred.predicted_count : '';
       const actualVal = company
-        ? (actualsByCompany[`${dateStr}||${type}||${company}`] || 0)
-        : (actualsTotal[`${dateStr}||${type}`] || 0);
+        ? (actualsByCompany[`${dateStr}||${t.linked_type}||${company}`] || 0)
+        : (actualsTotal[`${dateStr}||${t.linked_type}`] || 0);
       const diff = (predVal === '' || predVal === undefined) ? '' : (actualVal - parseInt(predVal));
       const note = pred && pred.note ? pred.note : '';
-      rows.push([dateStr, wd, company || '全社合計', TYPE_LABEL[type], predVal, actualVal, diff, note]);
+      rows.push([dateStr, wd, company || '全社合計', t.task_name, TYPE_LABEL[t.linked_type], predVal, actualVal, diff, note]);
     });
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:12},{wch:6},{wch:14},{wch:10},{wch:14},{wch:14},{wch:10},{wch:24}];
+  ws['!cols'] = [{wch:12},{wch:6},{wch:14},{wch:14},{wch:10},{wch:14},{wch:14},{wch:10},{wch:24}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '予測vs実測');
 
@@ -311,7 +388,7 @@ function exportExcel() {
 
 initWeekStart();
 loadCompanyList();
-loadWeek();
+loadTaskMaster().then(loadWeek);
 </script>
 </body>
 </html>
