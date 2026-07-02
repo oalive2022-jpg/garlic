@@ -145,7 +145,11 @@ app.post('/api/task-master', requireAdmin, async (req, res) => {
       sort_order: sort_order || 0, created_at: new Date().toISOString()
     }, config);
     if (r.status === 409) return res.status(409).json({ error: '既に同じ作業名があります' });
-    res.json({ ok: true });
+    if (r.status < 200 || r.status >= 300) {
+      console.error('task-master insert failed:', r.status, JSON.stringify(r.data));
+      return res.status(500).json({ error: 'Supabaseへの登録に失敗しました', detail: r.data });
+    }
+    res.json({ ok: true, inserted: r.data });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
@@ -291,16 +295,21 @@ app.post('/api/prediction', requireAdmin, async (req, res) => {
     findPath += company ? `&company=eq.${encodeURIComponent(company)}` : `&company=is.null`;
     findPath += task ? `&task=eq.${encodeURIComponent(task)}` : `&task=is.null`;
     const existing = await supabaseRequest('GET', findPath, null, config);
+    let writeRes;
     if (existing.data && existing.data.length > 0) {
-      await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
+      writeRes = await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
         { predicted_count: parseInt(predicted_count), note: note || null }, config);
     } else {
-      await supabaseRequest('POST', 'garlic_predictions', {
+      writeRes = await supabaseRequest('POST', 'garlic_predictions', {
         id: Date.now() + Math.floor(Math.random() * 1000),
         date, type, predicted_count: parseInt(predicted_count),
         note: note || null, company: company || null, task: task || null,
         created_at: new Date().toISOString()
       }, config);
+    }
+    if (writeRes.status < 200 || writeRes.status >= 300) {
+      console.error('prediction write failed:', writeRes.status, JSON.stringify(writeRes.data));
+      return res.status(500).json({ error: 'Supabaseへの登録に失敗しました', detail: writeRes.data });
     }
     res.json({ ok: true });
   } catch(e) {
@@ -366,16 +375,22 @@ app.post('/api/prediction-import', requireImportKey, async (req, res) => {
       findPath += company ? `&company=eq.${encodeURIComponent(company)}` : `&company=is.null`;
       findPath += task ? `&task=eq.${encodeURIComponent(task)}` : `&task=is.null`;
       const existing = await supabaseRequest('GET', findPath, null, config);
+      let writeRes;
       if (existing.data && existing.data.length > 0) {
-        await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
+        writeRes = await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
           { predicted_count: parseInt(predicted_count), note: note || null }, config);
       } else {
-        await supabaseRequest('POST', 'garlic_predictions', {
+        writeRes = await supabaseRequest('POST', 'garlic_predictions', {
           id: Date.now() + Math.floor(Math.random() * 1000),
           date, type, predicted_count: parseInt(predicted_count),
           note: note || null, company: company || null, task: task || null,
           created_at: new Date().toISOString()
         }, config);
+      }
+      if (writeRes.status < 200 || writeRes.status >= 300) {
+        console.error('prediction-import write failed:', writeRes.status, JSON.stringify(writeRes.data));
+        results.push({ date, type, task: task || null, company: company || null, ok: false, error: `Supabaseエラー(${writeRes.status})` });
+        continue;
       }
       results.push({ date, type, task: task || null, company: company || null, ok: true });
     }
