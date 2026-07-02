@@ -133,7 +133,6 @@ tr:last-child td { border-bottom: none; }
     <button class="tab active" onclick="switchTab('inventory',this)">📦 在庫一覧</button>
     <button class="tab" onclick="switchTab('history',this)">📋 入力履歴</button>
     <button class="tab" onclick="switchTab('settings',this)">⚙️ 企業管理</button>
-    <button class="tab" onclick="switchTab('schedule',this)">📅 スケジュール生成</button>
   </div>
 
   <div class="sec active" id="tab-inventory">
@@ -222,8 +221,7 @@ async function fetchData() {
     const res = await fetch('/api/data', { headers: authHeader() });
     if (res.status === 401 || res.status === 403) { location.href = '/login.html'; return; }
     appData = await res.json();
-    _fetchErrorCount = 0;
-    document.getElementById('last-update').textContent = '最終更新: ' + new Date().toLocaleTimeString('ja-JP');
+    _fetchErrorCount = 0;    document.getElementById('last-update').textContent = '最終更新: ' + new Date().toLocaleTimeString('ja-JP');
     renderInventory();
     renderHistory();
     renderSettings();
@@ -451,13 +449,48 @@ function renderSettings() {
   const el = document.getElementById('company-list-settings');
   if (!appData.companies.length) { el.innerHTML = '<p class="msg">企業がありません</p>'; return; }
   el.innerHTML = '<div class="form-sec"><h3>登録企業一覧</h3>' +
-    appData.companies.map(c=>`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0ec">
-        <span style="font-weight:500">🏢 ${c}</span>
-        <button class="btn btn-danger" onclick="deleteCompany('${c}')">削除</button>
-      </div>`).join('') + '</div>';
+    appData.companies.map(c => {
+      const detail = (appData.companiesDetail || []).find(d => d.name === c) || {};
+      return `
+      <div style="border-bottom:1px solid #f0f0ec;padding:12px 0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-weight:600">🏢 ${c}</span>
+          <button class="btn btn-danger" onclick="deleteCompany('${c}')">削除</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="password" id="pw-${c}" placeholder="企業用パスワード（未設定なら空欄）"
+            style="flex:1;height:36px;border:1.5px solid #d0d4c8;border-radius:8px;padding:0 10px;font-size:13px"
+            value="${detail.hasPassword ? '********' : ''}">
+          <button class="btn btn-primary" onclick="setCompanyPassword('${c}')"
+            style="height:36px;padding:0 14px;font-size:12px">設定</button>
+          ${detail.hasPassword ? `<button class="btn" onclick="clearCompanyPassword('${c}')"
+            style="height:36px;padding:0 10px;font-size:12px;color:#c04020;border-color:#c04020">解除</button>` : ''}
+        </div>
+        <p style="font-size:11px;color:#999;margin-top:4px">
+          ${detail.hasPassword ? '✅ パスワード設定済み（企業ログイン可能）' : '⬜ パスワード未設定'}
+        </p>
+      </div>`;
+    }).join('') + '</div>';
   const sel = document.getElementById('sched-company');
   if (sel) sel.innerHTML = '<option value="all">全企業</option>' + appData.companies.map(c=>`<option value="${c}">${c}</option>`).join('');
+}
+
+async function setCompanyPassword(company) {
+  const pw = document.getElementById(`pw-${company}`).value;
+  if (!pw || pw === '********') { alert('パスワードを入力してください'); return; }
+  const res = await fetch(`/api/company/${encodeURIComponent(company)}/password`, {
+    method: 'POST', headers: authHeader(), body: JSON.stringify({ password: pw })
+  });
+  if (res.ok) { showToast(`✓ ${company}のパスワードを設定しました`); fetchData(); }
+  else alert('設定に失敗しました');
+}
+
+async function clearCompanyPassword(company) {
+  if (!confirm(`${company}のパスワードを解除しますか？`)) return;
+  const res = await fetch(`/api/company/${encodeURIComponent(company)}/password`, {
+    method: 'POST', headers: authHeader(), body: JSON.stringify({ password: '' })
+  });
+  if (res.ok) { showToast(`✓ ${company}のパスワードを解除しました`); fetchData(); }
 }
 
 async function addCompany() {
