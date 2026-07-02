@@ -83,6 +83,9 @@ table.sched tr:last-child td { border-bottom: none; }
     <input type="date" id="week-start">
     <button class="btn" onclick="shiftWeek(7)">翌週 ▶</button>
     <button class="btn btn-primary" onclick="loadWeek()">この週を表示</button>
+    <select id="company-filter" onchange="renderDays()" style="height:36px;border:1px solid #d0d4c8;border-radius:8px;padding:0 10px;font-size:13px;">
+      <option value="">全社合計</option>
+    </select>
     <button class="btn btn-export" onclick="exportExcel()">📥 Excel出力</button>
   </div>
 
@@ -109,9 +112,27 @@ const TYPE_DOT = { clean: 'dot-c', damaged: 'dot-d', shipped: 'dot-s', planting:
 const TYPES = ['clean', 'damaged', 'shipped', 'planting'];
 const WEEKDAYS = ['日','月','火','水','木','金','土'];
 
-let predictions = {};  // key: date||type -> {id, predicted_count, note}
-let actuals = {};      // key: date||type -> count
+let predictions = {};   // key: date||type||(company|__ALL__) -> {id, predicted_count, note, company}
+let actualsTotal = {};  // key: date||type -> 全社合計
+let actualsByCompany = {}; // key: date||type||company -> 企業別
 let weekDates = [];
+let companyList = [];
+
+function currentCompany() {
+  return document.getElementById('company-filter').value; // '' = 全社合計
+}
+
+async function loadCompanyList() {
+  try {
+    const data = await fetch('/api/data', { headers: authHeaders() }).then(r => r.json());
+    companyList = data.companies || [];
+    const sel = document.getElementById('company-filter');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">全社合計</option>' +
+      companyList.map(c => `<option value="${c}">${c}</option>`).join('');
+    sel.value = prev && companyList.includes(prev) ? prev : '';
+  } catch(e) { /* 企業一覧が取れなくても致命的ではないので握りつぶす */ }
+}
 
 function toDateStr(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
@@ -159,24 +180,33 @@ async function loadWeek() {
 
   predictions = {};
   (predRes.predictions || []).forEach(p => {
-    predictions[`${p.date}||${p.type}`] = p;
+    const companyKey = p.company || '__ALL__';
+    predictions[`${p.date}||${p.type}||${companyKey}`] = p;
   });
-  actuals = actRes.totals || {};
+  actualsTotal = actRes.totals || {};
+  actualsByCompany = actRes.byCompany || {};
 
   renderDays();
 }
 
 function renderDays() {
+  const company = currentCompany();
+  const companyKey = company || '__ALL__';
   const container = document.getElementById('days-container');
-  container.innerHTML = weekDates.map(d => {
+  const scopeLabel = company ? `【${company}】の予測・実測` : '【全社合計】の予測・実測';
+
+  container.innerHTML = `<div style="font-size:12.5px;color:#666;margin-bottom:10px;font-weight:600">${scopeLabel}</div>` +
+    weekDates.map(d => {
     const dateStr = toDateStr(d);
     const wd = WEEKDAYS[d.getDay()];
     const rows = TYPES.map(type => {
-      const key = `${dateStr}||${type}`;
+      const key = `${dateStr}||${type}||${companyKey}`;
       const pred = predictions[key];
       const predVal = pred ? pred.predicted_count : '';
       const noteVal = pred && pred.note ? pred.note : '';
-      const actualVal = actuals[key] || 0;
+      const actualVal = company
+        ? (actualsByCompany[`${dateStr}||${type}||${company}`] || 0)
+        : (actualsTotal[`${dateStr}||${type}`] || 0);
 
       let diffHtml;
       if (pred === undefined || predVal === '') {
@@ -216,6 +246,7 @@ function renderDays() {
 }
 
 async function saveAllPredictions() {
+  const company = currentCompany();
   const inputs = document.querySelectorAll('.pred-input');
   const statusEl = document.getElementById('save-status');
   statusEl.textContent = '保存中...';
@@ -232,14 +263,14 @@ async function saveAllPredictions() {
       fetch('/api/prediction', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ date, type, predicted_count: val, note })
+        body: JSON.stringify({ date, type, predicted_count: val, note, company: company || null })
       })
     );
   });
 
   try {
     await Promise.all(jobs);
-    statusEl.textContent = `✓ ${jobs.length}件の予測を保存しました`;
+    statusEl.textContent = `✓ ${jobs.length}件の予測を保存しました（${company ? company : '全社合計'}）`;
     await loadWeek();
   } catch(e) {
     statusEl.textContent = '保存に失敗しました';
@@ -248,32 +279,38 @@ async function saveAllPredictions() {
 }
 
 function exportExcel() {
-  const rows = [['日付', '曜日', '種別', '予測(チャッピー)', '実測(自動集計)', '差分', 'メモ']];
+  const company = currentCompany();
+  const companyKey = company || '__ALL__';
+  const rows = [['日付', '曜日', '企業', '種別', '予測(チャッピー)', '実測(自動集計)', '差分', 'メモ']];
   weekDates.forEach(d => {
     const dateStr = toDateStr(d);
     const wd = WEEKDAYS[d.getDay()];
     TYPES.forEach(type => {
-      const key = `${dateStr}||${type}`;
+      const key = `${dateStr}||${type}||${companyKey}`;
       const pred = predictions[key];
       const predVal = pred ? pred.predicted_count : '';
-      const actualVal = actuals[key] || 0;
+      const actualVal = company
+        ? (actualsByCompany[`${dateStr}||${type}||${company}`] || 0)
+        : (actualsTotal[`${dateStr}||${type}`] || 0);
       const diff = (predVal === '' || predVal === undefined) ? '' : (actualVal - parseInt(predVal));
       const note = pred && pred.note ? pred.note : '';
-      rows.push([dateStr, wd, TYPE_LABEL[type], predVal, actualVal, diff, note]);
+      rows.push([dateStr, wd, company || '全社合計', TYPE_LABEL[type], predVal, actualVal, diff, note]);
     });
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:12},{wch:6},{wch:10},{wch:14},{wch:14},{wch:10},{wch:24}];
+  ws['!cols'] = [{wch:12},{wch:6},{wch:14},{wch:10},{wch:14},{wch:14},{wch:10},{wch:24}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '予測vs実測');
 
   const start = toDateStr(weekDates[0]);
   const end = toDateStr(weekDates[6]);
-  XLSX.writeFile(wb, `にんにく申し送り_${start}_${end}.xlsx`);
+  const label = company ? company.replace(/[\\/:*?"<>|]/g,'_') : '全社合計';
+  XLSX.writeFile(wb, `にんにく申し送り_${label}_${start}_${end}.xlsx`);
 }
 
 initWeekStart();
+loadCompanyList();
 loadWeek();
 </script>
 </body>
