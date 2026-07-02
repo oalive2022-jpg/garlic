@@ -10,7 +10,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// ── 設定 ──────────────────────────────────────
 function getConfig() {
   return {
     adminPassword: process.env.ADMIN_PASSWORD || 'admin1234',
@@ -21,7 +20,6 @@ function getConfig() {
   };
 }
 
-// ── Supabase APIヘルパー ──────────────────────
 function supabaseRequest(method, path, body, config) {
   return new Promise((resolve, reject) => {
     const url = new URL(config.supabaseUrl);
@@ -38,7 +36,6 @@ function supabaseRequest(method, path, body, config) {
       }
     };
     if (data) options.headers['Content-Length'] = Buffer.byteLength(data);
-
     const req = https.request(options, res => {
       let d = '';
       res.on('data', c => d += c);
@@ -55,9 +52,9 @@ function supabaseRequest(method, path, body, config) {
 
 // ── セッション管理 ────────────────────────────
 const sessions = {};
-function createSession(role) {
+function createSession(role, company) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions[token] = { role, createdAt: Date.now() };
+  sessions[token] = { role, company: company || null, createdAt: Date.now() };
   return token;
 }
 function getSession(req) {
@@ -70,20 +67,36 @@ function getSession(req) {
 function requireAuth(req, res, next) {
   const s = getSession(req);
   if (!s) return res.status(401).json({ error: 'ログインが必要です' });
-  req.role = s.role; next();
+  req.session = s; next();
 }
 function requireAdmin(req, res, next) {
   const s = getSession(req);
   if (!s || s.role !== 'admin') return res.status(403).json({ error: '管理者権限が必要です' });
-  req.role = s.role; next();
+  req.session = s; next();
 }
 
 // ── 認証API ──────────────────────────────────
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { password } = req.body;
   const config = getConfig();
-  if (password === config.adminPassword) return res.json({ ok: true, role: 'admin', token: createSession('admin') });
-  if (password === config.staffPassword) return res.json({ ok: true, role: 'staff', token: createSession('staff') });
+
+  // 管理者チェック
+  if (password === config.adminPassword) {
+    return res.json({ ok: true, role: 'admin', company: null, token: createSession('admin', null) });
+  }
+  // 職員チェック
+  if (password === config.staffPassword) {
+    return res.json({ ok: true, role: 'staff', company: null, token: createSession('staff', null) });
+  }
+  // 企業パスワードチェック
+  try {
+    const r = await supabaseRequest('GET', `garlic_companies?password=eq.${encodeURIComponent(password)}&select=name,password`, null, config);
+    if (r.data && r.data.length > 0) {
+      const company = r.data[0].name;
+      return res.json({ ok: true, role: 'company', company, token: createSession('company', company) });
+    }
+  } catch(e) {}
+
   res.status(401).json({ error: 'パスワードが違います' });
 });
 
@@ -96,20 +109,28 @@ app.post('/api/logout', (req, res) => {
 app.get('/api/me', (req, res) => {
   const s = getSession(req);
   if (!s) return res.status(401).json({ error: '未ログイン' });
-  res.json({ role: s.role });
+  res.json({ role: s.role, company: s.company });
 });
 
 // ── データAPI ─────────────────────────────────
 app.get('/api/data', requireAuth, async (req, res) => {
   const config = getConfig();
+  const session = req.session;
   try {
-    const [companies, entries] = await Promise.all([
-      supabaseRequest('GET', 'garlic_companies?select=name&order=id.asc', null, config),
-      supabaseRequest('GET', 'garlic_entries?select=*&order=id.desc', null, config)
-    ]);
+    const companiesRes = await supabaseRequest('GET', 'garlic_companies?select=name,password&order=id.asc', null, config);
+    const companies = (companiesRes.data || []).map(c => ({ name: c.name, hasPassword: !!c.password }));
+
+    let entriesPath = 'garlic_entries?select=*&order=id.desc';
+    if (session.role === 'company') {
+      entriesPath = `garlic_entries?select=*&company=eq.${encodeURIComponent(session.company)}&order=id.desc`;
+    }
+    const entriesRes = await supabaseRequest('GET', entriesPath, null, config);
+
     res.json({
-      companies: (companies.data || []).map(c => c.name),
-      entries: entries.data || []
+      companies: companies.map(c => c.name),
+      companiesDetail: companies,
+      entries: entriesRes.data || [],
+      session: { role: session.role, company: session.company }
     });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -119,6 +140,10 @@ app.get('/api/data', requireAuth, async (req, res) => {
 app.post('/api/entry', requireAuth, async (req, res) => {
   const { company, type, count, date, staff } = req.body;
   if (!company || !type || !count || !date) return res.status(400).json({ error: '入力不足です' });
+  // 企業ユーザーは自社のみ
+  if (req.session.role === 'company' && req.session.company !== company) {
+    return res.status(403).json({ error: '他社データは入力できません' });
+  }
   const config = getConfig();
   const now = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
   try {
@@ -135,6 +160,13 @@ app.post('/api/entry', requireAuth, async (req, res) => {
 
 app.delete('/api/entry/:id', requireAuth, async (req, res) => {
   const config = getConfig();
+  // 企業ユーザーは自社データのみ削除可
+  if (req.session.role === 'company') {
+    const check = await supabaseRequest('GET', `garlic_entries?id=eq.${req.params.id}&select=company`, null, config);
+    if (!check.data || !check.data[0] || check.data[0].company !== req.session.company) {
+      return res.status(403).json({ error: '他社データは削除できません' });
+    }
+  }
   try {
     await supabaseRequest('DELETE', `garlic_entries?id=eq.${req.params.id}`, null, config);
     res.json({ ok: true });
@@ -162,6 +194,20 @@ app.delete('/api/company/:name', requireAdmin, async (req, res) => {
   try {
     await supabaseRequest('DELETE', `garlic_companies?name=eq.${encodeURIComponent(name)}`, null, config);
     await supabaseRequest('DELETE', `garlic_entries?company=eq.${encodeURIComponent(name)}`, null, config);
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 企業パスワード設定（管理者のみ）
+app.post('/api/company/:name/password', requireAdmin, async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const { password } = req.body;
+  const config = getConfig();
+  try {
+    await supabaseRequest('PATCH', `garlic_companies?name=eq.${encodeURIComponent(name)}`,
+      { password: password || null }, config);
     res.json({ ok: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -202,18 +248,7 @@ app.post('/api/gemini', requireAdmin, async (req, res) => {
   }
 });
 
-// ── 起動 ──────────────────────────────────────
-function getLanIP() {
-  const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets))
-    for (const net of nets[name])
-      if (net.family === 'IPv4' && !net.internal) return net.address;
-  return 'localhost';
-}
-
 app.listen(PORT, '0.0.0.0', () => {
-  const ip = getLanIP();
-  console.log('\n🧄 にんにく在庫管理サーバー 起動中\n');
-  console.log('  ログイン画面(PC): http://localhost:' + PORT + '/login.html');
-  console.log('  ログイン画面(LAN): http://' + ip + ':' + PORT + '/login.html\n');
+  console.log('\n🧄 にんにく在庫管理サーバー 起動中');
+  console.log('  ポート: ' + PORT + '\n');
 });
