@@ -216,6 +216,76 @@ app.post('/api/company/:name/password', requireAdmin, async (req, res) => {
   }
 });
 
+// ── 申し送り：予測スケジュールAPI ──────────────
+app.get('/api/predictions', requireAuth, async (req, res) => {
+  const config = getConfig();
+  const { start, end } = req.query;
+  try {
+    let path = 'garlic_predictions?select=*&order=date.asc';
+    if (start && end) path += `&date=gte.${start}&date=lte.${end}`;
+    const r = await supabaseRequest('GET', path, null, config);
+    res.json({ predictions: r.data || [] });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 予測値を登録・上書き保存（同じ日付+種別があれば更新）
+app.post('/api/prediction', requireAdmin, async (req, res) => {
+  const { date, type, predicted_count, note } = req.body;
+  if (!date || !type || predicted_count === undefined || predicted_count === '') {
+    return res.status(400).json({ error: '入力不足です' });
+  }
+  const config = getConfig();
+  try {
+    const existing = await supabaseRequest('GET',
+      `garlic_predictions?date=eq.${date}&type=eq.${type}&select=id`, null, config);
+    if (existing.data && existing.data.length > 0) {
+      await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
+        { predicted_count: parseInt(predicted_count), note: note || null }, config);
+    } else {
+      await supabaseRequest('POST', 'garlic_predictions', {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        date, type, predicted_count: parseInt(predicted_count),
+        note: note || null, created_at: new Date().toISOString()
+      }, config);
+    }
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/prediction/:id', requireAdmin, async (req, res) => {
+  const config = getConfig();
+  try {
+    await supabaseRequest('DELETE', `garlic_predictions?id=eq.${req.params.id}`, null, config);
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── 申し送り：実測値の日付×種別 集計API ─────────
+// 全企業合計で、日付・種別ごとの実測数量を返す（predictionsとの突合用）
+app.get('/api/actuals', requireAuth, async (req, res) => {
+  const config = getConfig();
+  const { start, end } = req.query;
+  if (!start || !end) return res.status(400).json({ error: '期間指定が必要です(start, end)' });
+  try {
+    const r = await supabaseRequest('GET',
+      `garlic_entries?select=date,type,count&date=gte.${start}&date=lte.${end}`, null, config);
+    const totals = {};
+    (r.data || []).forEach(e => {
+      const key = `${e.date}||${e.type}`;
+      totals[key] = (totals[key] || 0) + (e.count || 0);
+    });
+    res.json({ totals });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Gemini API中継 ────────────────────────────
 app.post('/api/gemini', requireAdmin, async (req, res) => {
   const config = getConfig();
