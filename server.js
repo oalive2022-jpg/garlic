@@ -17,6 +17,7 @@ function getConfig() {
     geminiApiKey:  process.env.GEMINI_API_KEY  || '',
     supabaseUrl:   process.env.SUPABASE_URL    || '',
     supabaseKey:   process.env.SUPABASE_KEY    || '',
+    importApiKey:  process.env.IMPORT_API_KEY  || '',
   };
 }
 
@@ -75,6 +76,13 @@ function requireAdmin(req, res, next) {
   const s = getSession(req);
   if (!s || s.role !== 'admin') return res.status(403).json({ error: '管理者権限が必要です' });
   req.session = s; next();
+}
+function requireImportKey(req, res, next) {
+  const config = getConfig();
+  const key = req.headers['x-api-key'];
+  if (!config.importApiKey) return res.status(500).json({ error: 'IMPORT_API_KEYが未設定です' });
+  if (!key || key !== config.importApiKey) return res.status(401).json({ error: 'APIキーが不正です' });
+  next();
 }
 
 // ── 認証API ──────────────────────────────────
@@ -281,6 +289,70 @@ app.get('/api/actuals', requireAuth, async (req, res) => {
       totals[key] = (totals[key] || 0) + (e.count || 0);
     });
     res.json({ totals });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── 申し送り：Custom GPT(チャッピー)からの自動取り込みAPI ──────
+// x-api-key ヘッダーで認証。ChatGPTのCustom GPT Actionsから直接叩かれる想定。
+const VALID_TYPES = ['clean', 'damaged', 'shipped', 'planting'];
+
+app.post('/api/prediction-import', requireImportKey, async (req, res) => {
+  const { predictions } = req.body;
+  if (!Array.isArray(predictions) || predictions.length === 0) {
+    return res.status(400).json({ error: 'predictions配列が必要です' });
+  }
+  const config = getConfig();
+  const results = [];
+  try {
+    for (const p of predictions) {
+      const { date, type, predicted_count, note } = p;
+      if (!date || !VALID_TYPES.includes(type) || predicted_count === undefined || predicted_count === '') {
+        results.push({ date, type, ok: false, error: '入力不足または種別が不正です' });
+        continue;
+      }
+      const existing = await supabaseRequest('GET',
+        `garlic_predictions?date=eq.${date}&type=eq.${type}&select=id`, null, config);
+      if (existing.data && existing.data.length > 0) {
+        await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
+          { predicted_count: parseInt(predicted_count), note: note || null }, config);
+      } else {
+        await supabaseRequest('POST', 'garlic_predictions', {
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          date, type, predicted_count: parseInt(predicted_count),
+          note: note || null, created_at: new Date().toISOString()
+        }, config);
+      }
+      results.push({ date, type, ok: true });
+    }
+    const failed = results.filter(r => !r.ok);
+    res.json({
+      ok: failed.length === 0,
+      imported: results.filter(r => r.ok).length,
+      failed,
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Custom GPTが「今どの週の実測がどこまで埋まっているか」を確認するための参照API
+app.get('/api/actuals-for-gpt', requireImportKey, async (req, res) => {
+  const config = getConfig();
+  const { start, end } = req.query;
+  if (!start || !end) return res.status(400).json({ error: '期間指定が必要です(start, end)' });
+  try {
+    const r = await supabaseRequest('GET',
+      `garlic_entries?select=date,type,count&date=gte.${start}&date=lte.${end}`, null, config);
+    const totals = {};
+    (r.data || []).forEach(e => {
+      const key = `${e.date}||${e.type}`;
+      totals[key] = (totals[key] || 0) + (e.count || 0);
+    });
+    const predRes = await supabaseRequest('GET',
+      `garlic_predictions?select=*&date=gte.${start}&date=lte.${end}`, null, config);
+    res.json({ actual_totals: totals, previous_predictions: predRes.data || [] });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
