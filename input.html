@@ -184,9 +184,16 @@ async function loadData() {
     appData = await res.json();
     // 新規入力セレクト
     const sel = document.getElementById('company');
-    sel.innerHTML = appData.companies.length
-      ? '<option value="">企業を選択</option>' + appData.companies.map(c => `<option value="${c}">${c}</option>`).join('')
+    let companies = appData.companies;
+    // 企業ロールの場合は自社のみ表示
+    if (_role === 'company' && _company) {
+      companies = companies.filter(c => c === _company);
+    }
+    sel.innerHTML = companies.length
+      ? '<option value="">企業を選択</option>' + companies.map(c => `<option value="${c}">${c}</option>`).join('')
       : '<option value="">企業未登録</option>';
+    // 企業ロールは自動選択
+    if (_role === 'company' && _company) sel.value = _company;
     // 修正フィルタ
     const esel = document.getElementById('edit-company-filter');
     const cur = esel.value;
@@ -381,8 +388,10 @@ async function submitNew() {
 const today = new Date();
 document.getElementById('date').value = today.toISOString().split('T')[0];
 
-// 認証チェック
+// 認証チェック・企業ロール対応
 if (!sessionStorage.getItem('garlic-token')) { location.href = '/login.html'; }
+const _role = sessionStorage.getItem('garlic-role');
+const _company = sessionStorage.getItem('garlic-company');
 
 function updateCompanySummary() {
   const company = document.getElementById('company').value;
