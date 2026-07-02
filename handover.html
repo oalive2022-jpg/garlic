@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>にんにく在庫管理 - 申し送り(予測vs実測)</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Hiragino Sans', 'Yu Gothic UI', sans-serif; background: #f2f4f0; color: #222; }
+.header { background: #3B6D11; color: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+.hl { display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header p { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+.rbadge { background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+main { padding: 20px 24px 60px; max-width: 1100px; margin: 0 auto; }
+
+.week-bar { display: flex; align-items: center; gap: 10px; background: white; border: 1px solid #e4e8dc; border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; flex-wrap: wrap; }
+.week-bar strong { font-size: 14px; margin-right: 6px; }
+.week-bar input[type="date"] { height: 36px; border: 1px solid #d0d4c8; border-radius: 8px; padding: 0 10px; font-size: 13px; }
+.btn { height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid #c8ccc0; background: white; font-size: 13px; cursor: pointer; color: #333; }
+.btn:hover { background: #f5f7f2; }
+.btn-primary { background: #3B6D11; color: white; border-color: #3B6D11; }
+.btn-primary:hover { background: #27500A; }
+.btn-export { background: #185FA5; color: white; border-color: #185FA5; margin-left: auto; }
+.btn-export:hover { background: #0C447C; }
+
+.hint-box { background: #FDF3E3; border: 1px solid #ecd39a; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; font-size: 12.5px; color: #5a3c06; line-height: 1.7; }
+
+.day-block { background: white; border-radius: 12px; border: 1px solid #e4e8dc; margin-bottom: 14px; overflow: hidden; }
+.day-head { padding: 10px 18px; background: #f7f9f4; border-bottom: 1px solid #e4e8dc; font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.day-head .wd { font-size: 11px; font-weight: 500; color: #888; }
+
+table.sched { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.sched th { background: #fafbf8; padding: 8px 10px; text-align: left; font-weight: 600; font-size: 11.5px; color: #888; border-bottom: 1px solid #eef0ea; }
+table.sched td { padding: 7px 10px; border-bottom: 1px solid #f4f5f1; vertical-align: middle; }
+table.sched tr:last-child td { border-bottom: none; }
+
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.dot-c { background: #639922; } .dot-d { background: #D85A30; } .dot-s { background: #378ADD; } .dot-p { background: #B87820; }
+
+.pred-input { width: 70px; height: 30px; border: 1.5px solid #d0d4c8; border-radius: 6px; padding: 0 8px; font-size: 13px; text-align: right; }
+.pred-input:focus { border-color: #3B6D11; outline: none; }
+.actual-val { font-weight: 700; font-size: 13.5px; }
+.diff-tag { display: inline-block; font-size: 11.5px; font-weight: 700; border-radius: 6px; padding: 2px 8px; }
+.diff-zero { background: #EAF3DE; color: #27500A; }
+.diff-over { background: #E6F1FB; color: #0C447C; }
+.diff-under { background: #FAECE7; color: #712B13; }
+.diff-none { background: #f0f0ec; color: #999; font-weight: 500; }
+.note-input { width: 100%; min-width: 90px; height: 30px; border: 1px solid #e4e8dc; border-radius: 6px; padding: 0 8px; font-size: 12px; color: #666; }
+
+.save-bar { display: flex; gap: 10px; margin-top: 4px; margin-bottom: 26px; }
+.save-status { font-size: 12px; color: #3B6D11; align-self: center; }
+
+.type-th { white-space: nowrap; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div class="header">
+  <div class="hl">
+    <span style="font-size:26px">📋</span>
+    <div>
+      <h1>申し送り — 予測 vs 実測</h1>
+      <p>チャッピーの週間予測と、在庫管理アプリの実測データを突き合わせます</p>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <a href="/admin.html" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:white;border-radius:20px;padding:5px 14px;font-size:12px;text-decoration:none">🧄 在庫管理画面へ</a>
+    <span class="rbadge">管理者</span>
+  </div>
+</div>
+
+<main>
+
+  <div class="hint-box">
+    💡 使い方：①チャッピーが出した向こう1週間の予測数を「予測」欄に入力して保存 → ②実測は在庫管理アプリのデータから自動集計されます → ③週末に「Excel出力」して、その週の予測vs実測をチャッピーに再投入すると、次週の予測精度が上がります。
+  </div>
+
+  <div class="week-bar">
+    <strong>対象週</strong>
+    <button class="btn" onclick="shiftWeek(-7)">◀ 前週</button>
+    <input type="date" id="week-start">
+    <button class="btn" onclick="shiftWeek(7)">翌週 ▶</button>
+    <button class="btn btn-primary" onclick="loadWeek()">この週を表示</button>
+    <button class="btn btn-export" onclick="exportExcel()">📥 Excel出力</button>
+  </div>
+
+  <div id="days-container"></div>
+
+  <div class="save-bar">
+    <button class="btn btn-primary" onclick="saveAllPredictions()">💾 予測をすべて保存</button>
+    <span class="save-status" id="save-status"></span>
+  </div>
+
+</main>
+
+<script>
+const _token = sessionStorage.getItem('garlic-token');
+const _role  = sessionStorage.getItem('garlic-role');
+if (!_token || _role !== 'admin') { location.href = '/login.html'; }
+
+function authHeaders() {
+  return { 'Content-Type': 'application/json', 'x-session-token': sessionStorage.getItem('garlic-token') };
+}
+
+const TYPE_LABEL = { clean: 'きれい', damaged: '傷', shipped: '出荷用', planting: '植え込み' };
+const TYPE_DOT = { clean: 'dot-c', damaged: 'dot-d', shipped: 'dot-s', planting: 'dot-p' };
+const TYPES = ['clean', 'damaged', 'shipped', 'planting'];
+const WEEKDAYS = ['日','月','火','水','木','金','土'];
+
+let predictions = {};  // key: date||type -> {id, predicted_count, note}
+let actuals = {};      // key: date||type -> count
+let weekDates = [];
+
+function toDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function getNextMonday() {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = day === 0 ? 1 : (day === 1 ? 0 : 8 - day);
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function initWeekStart() {
+  document.getElementById('week-start').value = toDateStr(getNextMonday());
+}
+
+function shiftWeek(days) {
+  const el = document.getElementById('week-start');
+  const d = new Date(el.value);
+  d.setDate(d.getDate() + days);
+  el.value = toDateStr(d);
+  loadWeek();
+}
+
+function buildWeekDates() {
+  const start = new Date(document.getElementById('week-start').value);
+  weekDates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    weekDates.push(d);
+  }
+}
+
+async function loadWeek() {
+  buildWeekDates();
+  const start = toDateStr(weekDates[0]);
+  const end = toDateStr(weekDates[6]);
+
+  const [predRes, actRes] = await Promise.all([
+    fetch(`/api/predictions?start=${start}&end=${end}`, { headers: authHeaders() }).then(r => r.json()),
+    fetch(`/api/actuals?start=${start}&end=${end}`, { headers: authHeaders() }).then(r => r.json())
+  ]);
+
+  predictions = {};
+  (predRes.predictions || []).forEach(p => {
+    predictions[`${p.date}||${p.type}`] = p;
+  });
+  actuals = actRes.totals || {};
+
+  renderDays();
+}
+
+function renderDays() {
+  const container = document.getElementById('days-container');
+  container.innerHTML = weekDates.map(d => {
+    const dateStr = toDateStr(d);
+    const wd = WEEKDAYS[d.getDay()];
+    const rows = TYPES.map(type => {
+      const key = `${dateStr}||${type}`;
+      const pred = predictions[key];
+      const predVal = pred ? pred.predicted_count : '';
+      const noteVal = pred && pred.note ? pred.note : '';
+      const actualVal = actuals[key] || 0;
+
+      let diffHtml;
+      if (pred === undefined || predVal === '') {
+        diffHtml = `<span class="diff-tag diff-none">予測未入力</span>`;
+      } else {
+        const diff = actualVal - parseInt(predVal);
+        if (diff === 0) diffHtml = `<span class="diff-tag diff-zero">ぴったり</span>`;
+        else if (diff > 0) diffHtml = `<span class="diff-tag diff-over">+${diff}(実測多)</span>`;
+        else diffHtml = `<span class="diff-tag diff-under">${diff}(実測少)</span>`;
+      }
+
+      return `
+        <tr>
+          <td><span class="dot ${TYPE_DOT[type]}"></span>${TYPE_LABEL[type]}</td>
+          <td><input type="number" class="pred-input" data-date="${dateStr}" data-type="${type}" data-field="pred" value="${predVal}" placeholder="—"></td>
+          <td class="actual-val">${actualVal}</td>
+          <td>${diffHtml}</td>
+          <td><input type="text" class="note-input" data-date="${dateStr}" data-type="${type}" data-field="note" value="${noteVal}" placeholder="メモ"></td>
+        </tr>`;
+    }).join('');
+
+    return `
+      <div class="day-block">
+        <div class="day-head">${dateStr} <span class="wd">(${wd})</span></div>
+        <table class="sched">
+          <tr>
+            <th class="type-th">種別</th>
+            <th class="type-th">予測(チャッピー)</th>
+            <th class="type-th">実測(自動集計)</th>
+            <th class="type-th">差分</th>
+            <th>メモ</th>
+          </tr>
+          ${rows}
+        </table>
+      </div>`;
+  }).join('');
+}
+
+async function saveAllPredictions() {
+  const inputs = document.querySelectorAll('.pred-input');
+  const statusEl = document.getElementById('save-status');
+  statusEl.textContent = '保存中...';
+
+  const jobs = [];
+  inputs.forEach(input => {
+    const val = input.value;
+    if (val === '') return;
+    const date = input.dataset.date;
+    const type = input.dataset.type;
+    const noteInput = document.querySelector(`.note-input[data-date="${date}"][data-type="${type}"]`);
+    const note = noteInput ? noteInput.value : '';
+    jobs.push(
+      fetch('/api/prediction', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ date, type, predicted_count: val, note })
+      })
+    );
+  });
+
+  try {
+    await Promise.all(jobs);
+    statusEl.textContent = `✓ ${jobs.length}件の予測を保存しました`;
+    await loadWeek();
+  } catch(e) {
+    statusEl.textContent = '保存に失敗しました';
+  }
+  setTimeout(() => statusEl.textContent = '', 4000);
+}
+
+function exportExcel() {
+  const rows = [['日付', '曜日', '種別', '予測(チャッピー)', '実測(自動集計)', '差分', 'メモ']];
+  weekDates.forEach(d => {
+    const dateStr = toDateStr(d);
+    const wd = WEEKDAYS[d.getDay()];
+    TYPES.forEach(type => {
+      const key = `${dateStr}||${type}`;
+      const pred = predictions[key];
+      const predVal = pred ? pred.predicted_count : '';
+      const actualVal = actuals[key] || 0;
+      const diff = (predVal === '' || predVal === undefined) ? '' : (actualVal - parseInt(predVal));
+      const note = pred && pred.note ? pred.note : '';
+      rows.push([dateStr, wd, TYPE_LABEL[type], predVal, actualVal, diff, note]);
+    });
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:12},{wch:6},{wch:10},{wch:14},{wch:14},{wch:10},{wch:24}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '予測vs実測');
+
+  const start = toDateStr(weekDates[0]);
+  const end = toDateStr(weekDates[6]);
+  XLSX.writeFile(wb, `にんにく申し送り_${start}_${end}.xlsx`);
+}
+
+initWeekStart();
+loadWeek();
+</script>
+</body>
+</html>
