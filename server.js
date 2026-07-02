@@ -24,6 +24,7 @@ function supabaseRequest(method, path, body, config) {
   return new Promise((resolve, reject) => {
     const url = new URL(config.supabaseUrl);
     const data = body ? JSON.stringify(body) : null;
+    console.log(`Supabase ${method} ${path}`, data ? data.slice(0, 100) : '');
     const options = {
       hostname: url.hostname,
       path: `/rest/v1/${path}`,
@@ -40,11 +41,12 @@ function supabaseRequest(method, path, body, config) {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
+        console.log(`Supabase response ${res.statusCode}:`, d.slice(0, 200));
         try { resolve({ status: res.statusCode, data: d ? JSON.parse(d) : [] }); }
         catch(e) { resolve({ status: res.statusCode, data: [] }); }
       });
     });
-    req.on('error', reject);
+    req.on('error', e => { console.error('Supabase error:', e.message); reject(e); });
     if (data) req.write(data);
     req.end();
   });
