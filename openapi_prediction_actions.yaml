@@ -1,0 +1,132 @@
+openapi: 3.1.0
+info:
+  title: にんにく在庫管理 - 申し送り連携API
+  description: >
+    にんにく在庫管理アプリと連携し、向こう1週間の予測スケジュール(植え込み・収穫関連の数量予測)を
+    登録するためのAPI。実測データとの突合結果も参照できる。
+  version: 1.0.0
+servers:
+  - url: https://garlic-k9ph.onrender.com
+    description: 本番サーバー（Renderのデプロイ先URLに置き換えてください）
+
+paths:
+  /api/actuals-for-gpt:
+    get:
+      operationId: getActualsAndPreviousPredictions
+      summary: 指定期間の実測合計と、その期間に登録済みの過去の予測値を取得する
+      description: >
+        予測を作成する前に必ず呼び出し、直近の実測データと前回の予測を確認してから
+        次の予測値を算出すること。
+      parameters:
+        - name: start
+          in: query
+          required: true
+          description: 期間の開始日（YYYY-MM-DD）
+          schema:
+            type: string
+            format: date
+        - name: end
+          in: query
+          required: true
+          description: 期間の終了日（YYYY-MM-DD）
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 実測合計と過去の予測値
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  actual_totals:
+                    type: object
+                    description: "キーは '日付||種別'（例: 2026-07-06||clean）、値は実測合計数"
+                    additionalProperties:
+                      type: integer
+                  previous_predictions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Prediction'
+        '401':
+          description: APIキーが不正
+
+  /api/prediction-import:
+    post:
+      operationId: importWeeklyPredictions
+      summary: 向こう1週間分の予測スケジュールをまとめて登録・上書き保存する
+      description: >
+        同じ日付・種別の予測が既にある場合は上書きされる。
+        種別(type)は clean（きれい）/ damaged（傷）/ shipped（出荷用）/ planting（植え込み）のいずれか。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [predictions]
+              properties:
+                predictions:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PredictionInput'
+      responses:
+        '200':
+          description: 登録結果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  imported:
+                    type: integer
+                  failed:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          description: 入力不足
+        '401':
+          description: APIキーが不正
+
+components:
+  schemas:
+    PredictionInput:
+      type: object
+      required: [date, type, predicted_count]
+      properties:
+        date:
+          type: string
+          format: date
+          description: 予測対象日（YYYY-MM-DD）
+        type:
+          type: string
+          enum: [clean, damaged, shipped, planting]
+          description: きれい/傷/出荷用/植え込みのいずれか
+        predicted_count:
+          type: integer
+          description: 予測数量
+        note:
+          type: string
+          description: 予測の根拠や補足（任意）
+    Prediction:
+      allOf:
+        - $ref: '#/components/schemas/PredictionInput'
+        - type: object
+          properties:
+            id:
+              type: integer
+            created_at:
+              type: string
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+
+security:
+  - ApiKeyAuth: []
