@@ -122,6 +122,45 @@ app.get('/api/me', (req, res) => {
   res.json({ role: s.role, company: s.company });
 });
 
+// ── 作業マスタ（皮むき／醤油酢漬け等、固定の作業種類）───────
+app.get('/api/task-master', requireAuth, async (req, res) => {
+  const config = getConfig();
+  try {
+    const r = await supabaseRequest('GET', 'garlic_task_master?select=*&order=sort_order.asc', null, config);
+    res.json({ tasks: r.data || [] });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/task-master', requireAdmin, async (req, res) => {
+  const { task_name, linked_type, sort_order } = req.body;
+  if (!task_name || !VALID_TYPES.includes(linked_type)) {
+    return res.status(400).json({ error: '作業名と紐づけ種別(clean/damaged/shipped/planting)が必要です' });
+  }
+  const config = getConfig();
+  try {
+    const r = await supabaseRequest('POST', 'garlic_task_master', {
+      id: Date.now(), task_name, linked_type,
+      sort_order: sort_order || 0, created_at: new Date().toISOString()
+    }, config);
+    if (r.status === 409) return res.status(409).json({ error: '既に同じ作業名があります' });
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/task-master/:id', requireAdmin, async (req, res) => {
+  const config = getConfig();
+  try {
+    await supabaseRequest('DELETE', `garlic_task_master?id=eq.${req.params.id}`, null, config);
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── データAPI ─────────────────────────────────
 app.get('/api/data', requireAuth, async (req, res) => {
   const config = getConfig();
@@ -240,9 +279,9 @@ app.get('/api/predictions', requireAuth, async (req, res) => {
   }
 });
 
-// 予測値を登録・上書き保存（同じ日付+種別+企業があれば更新。companyを省略/nullなら全社合計扱い）
+// 予測値を登録・上書き保存（同じ日付+種別+作業+企業があれば更新。companyを省略/nullなら全社合計扱い）
 app.post('/api/prediction', requireAdmin, async (req, res) => {
-  const { date, type, predicted_count, note, company } = req.body;
+  const { date, type, predicted_count, note, company, task } = req.body;
   if (!date || !type || predicted_count === undefined || predicted_count === '') {
     return res.status(400).json({ error: '入力不足です' });
   }
@@ -250,6 +289,7 @@ app.post('/api/prediction', requireAdmin, async (req, res) => {
   try {
     let findPath = `garlic_predictions?date=eq.${date}&type=eq.${type}&select=id`;
     findPath += company ? `&company=eq.${encodeURIComponent(company)}` : `&company=is.null`;
+    findPath += task ? `&task=eq.${encodeURIComponent(task)}` : `&task=is.null`;
     const existing = await supabaseRequest('GET', findPath, null, config);
     if (existing.data && existing.data.length > 0) {
       await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
@@ -258,7 +298,7 @@ app.post('/api/prediction', requireAdmin, async (req, res) => {
       await supabaseRequest('POST', 'garlic_predictions', {
         id: Date.now() + Math.floor(Math.random() * 1000),
         date, type, predicted_count: parseInt(predicted_count),
-        note: note || null, company: company || null,
+        note: note || null, company: company || null, task: task || null,
         created_at: new Date().toISOString()
       }, config);
     }
@@ -317,13 +357,14 @@ app.post('/api/prediction-import', requireImportKey, async (req, res) => {
   const results = [];
   try {
     for (const p of predictions) {
-      const { date, type, predicted_count, note, company } = p;
+      const { date, type, predicted_count, note, company, task } = p;
       if (!date || !VALID_TYPES.includes(type) || predicted_count === undefined || predicted_count === '') {
-        results.push({ date, type, company: company || null, ok: false, error: '入力不足または種別が不正です' });
+        results.push({ date, type, task: task || null, company: company || null, ok: false, error: '入力不足または種別が不正です' });
         continue;
       }
       let findPath = `garlic_predictions?date=eq.${date}&type=eq.${type}&select=id`;
       findPath += company ? `&company=eq.${encodeURIComponent(company)}` : `&company=is.null`;
+      findPath += task ? `&task=eq.${encodeURIComponent(task)}` : `&task=is.null`;
       const existing = await supabaseRequest('GET', findPath, null, config);
       if (existing.data && existing.data.length > 0) {
         await supabaseRequest('PATCH', `garlic_predictions?id=eq.${existing.data[0].id}`,
@@ -332,11 +373,11 @@ app.post('/api/prediction-import', requireImportKey, async (req, res) => {
         await supabaseRequest('POST', 'garlic_predictions', {
           id: Date.now() + Math.floor(Math.random() * 1000),
           date, type, predicted_count: parseInt(predicted_count),
-          note: note || null, company: company || null,
+          note: note || null, company: company || null, task: task || null,
           created_at: new Date().toISOString()
         }, config);
       }
-      results.push({ date, type, company: company || null, ok: true });
+      results.push({ date, type, task: task || null, company: company || null, ok: true });
     }
     const failed = results.filter(r => !r.ok);
     res.json({
@@ -349,7 +390,7 @@ app.post('/api/prediction-import', requireImportKey, async (req, res) => {
   }
 });
 
-// Custom GPTが「今どの週の実測がどこまで埋まっているか」を確認するための参照API
+// Custom GPTが「今どの週の実測がどこまで埋まっているか」「どんな作業種類があるか」を確認するための参照API
 // company を指定すればその企業だけ、省略すれば全社合計＋企業一覧を返す
 app.get('/api/actuals-for-gpt', requireImportKey, async (req, res) => {
   const config = getConfig();
@@ -374,9 +415,11 @@ app.get('/api/actuals-for-gpt', requireImportKey, async (req, res) => {
     const predRes = await supabaseRequest('GET', predPath, null, config);
 
     const companiesRes = await supabaseRequest('GET', 'garlic_companies?select=name&order=id.asc', null, config);
+    const taskMasterRes = await supabaseRequest('GET', 'garlic_task_master?select=*&order=sort_order.asc', null, config);
 
     res.json({
       companies: (companiesRes.data || []).map(c => c.name),
+      task_master: taskMasterRes.data || [],
       actual_totals: totals,
       actual_by_company: byCompany,
       previous_predictions: predRes.data || []
