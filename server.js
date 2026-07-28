@@ -165,6 +165,84 @@ app.delete('/api/task-master/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// ── 利用者・技能マスタ（日次プランナー用）───────────
+app.get('/api/staff', requireAuth, async (req, res) => {
+  const config = getConfig();
+  const session = req.session;
+  try {
+    let path = 'garlic_staff?select=*&order=id.asc';
+    if (session.role === 'company') {
+      path = `garlic_staff?select=*&company=eq.${encodeURIComponent(session.company)}&order=id.asc`;
+    }
+    const r = await supabaseRequest('GET', path, null, config);
+    res.json({ staff: r.data || [] });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/staff', requireAuth, async (req, res) => {
+  const { name, company, skills } = req.body;
+  if (!name) return res.status(400).json({ error: '氏名が必要です' });
+  if (req.session.role === 'company' && company && company !== req.session.company) {
+    return res.status(403).json({ error: '他社の利用者は追加できません' });
+  }
+  const finalCompany = req.session.role === 'company' ? req.session.company : (company || null);
+  const config = getConfig();
+  try {
+    const r = await supabaseRequest('POST', 'garlic_staff', {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      name, company: finalCompany, skills: skills || {}, active: true,
+      created_at: new Date().toISOString()
+    }, config);
+    if (r.status < 200 || r.status >= 300) {
+      console.error('staff insert failed:', r.status, JSON.stringify(r.data));
+      return res.status(500).json({ error: 'Supabaseへの登録に失敗しました', detail: r.data });
+    }
+    res.json({ ok: true, inserted: r.data });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch('/api/staff/:id', requireAuth, async (req, res) => {
+  const config = getConfig();
+  if (req.session.role === 'company') {
+    const check = await supabaseRequest('GET', `garlic_staff?id=eq.${req.params.id}&select=company`, null, config);
+    if (!check.data || !check.data[0] || check.data[0].company !== req.session.company) {
+      return res.status(403).json({ error: '他社の利用者は編集できません' });
+    }
+  }
+  const { name, company, skills, active } = req.body;
+  const patch = {};
+  if (name !== undefined) patch.name = name;
+  if (company !== undefined && req.session.role !== 'company') patch.company = company;
+  if (skills !== undefined) patch.skills = skills;
+  if (active !== undefined) patch.active = active;
+  try {
+    await supabaseRequest('PATCH', `garlic_staff?id=eq.${req.params.id}`, patch, config);
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/staff/:id', requireAuth, async (req, res) => {
+  const config = getConfig();
+  if (req.session.role === 'company') {
+    const check = await supabaseRequest('GET', `garlic_staff?id=eq.${req.params.id}&select=company`, null, config);
+    if (!check.data || !check.data[0] || check.data[0].company !== req.session.company) {
+      return res.status(403).json({ error: '他社の利用者は削除できません' });
+    }
+  }
+  try {
+    await supabaseRequest('DELETE', `garlic_staff?id=eq.${req.params.id}`, null, config);
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── データAPI ─────────────────────────────────
 app.get('/api/data', requireAuth, async (req, res) => {
   const config = getConfig();
