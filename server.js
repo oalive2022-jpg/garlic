@@ -243,6 +243,38 @@ app.delete('/api/staff/:id', requireAuth, async (req, res) => {
   }
 });
 
+// ── プランナー設定（時間の見積もり・速度倍率）───────────
+app.get('/api/planner-config', requireAuth, async (req, res) => {
+  const config = getConfig();
+  try {
+    const r = await supabaseRequest('GET', 'garlic_planner_config?id=eq.1&select=*', null, config);
+    if (!r.data || r.data.length === 0) return res.status(404).json({ error: '設定が見つかりません(migration_planner_config.sqlを実行してください)' });
+    res.json({ config: r.data[0] });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/planner-config', requireAdmin, async (req, res) => {
+  const { buffer, speed_mult, unit_times, ratios } = req.body;
+  const patch = { updated_at: new Date().toISOString() };
+  if (buffer !== undefined) patch.buffer = buffer;
+  if (speed_mult !== undefined) patch.speed_mult = speed_mult;
+  if (unit_times !== undefined) patch.unit_times = unit_times;
+  if (ratios !== undefined) patch.ratios = ratios;
+  const config = getConfig();
+  try {
+    const r = await supabaseRequest('PATCH', 'garlic_planner_config?id=eq.1', patch, config);
+    if (r.status < 200 || r.status >= 300) {
+      console.error('planner-config update failed:', r.status, JSON.stringify(r.data));
+      return res.status(500).json({ error: 'Supabaseへの更新に失敗しました', detail: r.data });
+    }
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── データAPI ─────────────────────────────────
 app.get('/api/data', requireAuth, async (req, res) => {
   const config = getConfig();
