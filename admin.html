@@ -165,8 +165,15 @@ tr:last-child td { border-bottom: none; }
 
   <div class="sec" id="tab-schedule">
     <div class="sched-panel">
-      <h2 style="font-size:15px;font-weight:700;margin-bottom:16px">📅 月次作業スケジュール自動生成（Gemini AI）</h2>
+      <h2 style="font-size:15px;font-weight:700;margin-bottom:16px">📅 月次作業スケジュール自動生成</h2>
       <div class="frow" style="margin-bottom:12px">
+        <div class="fg">
+          <label>生成方法</label>
+          <select id="sched-mode" onchange="onSchedModeChange()" style="width:220px;height:40px;border:1.5px solid #d0d4c8;border-radius:8px;padding:0 10px;font-size:14px">
+            <option value="gemini">🤖 Gemini(自由文章)</option>
+            <option value="own">⚙️ 自作AI(精密ロジック)</option>
+          </select>
+        </div>
         <div class="fg">
           <label>対象年月</label>
           <input type="month" id="sched-month" title="対象年月" style="width:180px;height:40px;border:1.5px solid #d0d4c8;border-radius:8px;padding:0 10px;font-size:15px">
@@ -178,12 +185,23 @@ tr:last-child td { border-bottom: none; }
           </select>
         </div>
         <div class="fg" style="align-self:flex-end">
-          <button class="btn btn-primary" onclick="generateSchedule()" id="sched-btn" style="height:40px;padding:0 22px">🤖 スケジュール生成</button>
+          <button class="btn btn-primary" onclick="onGenerateClick()" id="sched-btn" style="height:40px;padding:0 22px">🤖 スケジュール生成</button>
         </div>
       </div>
-      <div class="fg" style="margin-bottom:16px">
+      <div class="fg" id="sched-goal-wrap" style="margin-bottom:16px">
         <label>目標・補足（任意）</label>
         <input type="text" id="sched-goal" title="目標・補足" placeholder="例：黒にんにく100パック目標、メンバー5名" style="width:100%;height:40px;border:1.5px solid #d0d4c8;border-radius:8px;padding:0 12px;font-size:14px">
+      </div>
+      <div id="sched-own-inputs" style="display:none;margin-bottom:16px">
+        <p style="font-size:12px;color:#888;margin-bottom:10px">「典型的な1日」の数量を入力してください。日ごとの出勤状況や在庫の違いは反映されません(まずは①の範囲)。実際の毎日の調整は「📅 日次プランナー」タブをご利用ください。</p>
+        <div class="frow">
+          <div class="fg"><label>皮むき見込み(個)</label><input type="number" id="own-peel" value="130" style="width:110px"></div>
+          <div class="fg"><label>収穫(キット)</label><input type="number" id="own-harvest" value="12" style="width:110px"></div>
+          <div class="fg"><label>黒にんにく(パック)</label><input type="number" id="own-kuro" value="16" style="width:110px"></div>
+          <div class="fg"><label>はちみつ漬け(パック)</label><input type="number" id="own-honey" value="10" style="width:120px"></div>
+          <div class="fg"><label>醤油酢漬け(パック)</label><input type="number" id="own-soy" value="10" style="width:110px"></div>
+          <div class="fg"><label>皮茶(パック)</label><input type="number" id="own-tea" value="10" style="width:100px"></div>
+        </div>
       </div>
       <div id="sched-loading" style="display:none;text-align:center;padding:50px 0;color:#666">
         <div style="font-size:32px;margin-bottom:12px">⏳</div>
@@ -235,10 +253,47 @@ tr:last-child td { border-bottom: none; }
     </div>
 
     <div class="form-sec">
-      <h3>🔢 本日の数量</h3>
-      <div class="frow" style="margin-bottom:10px">
-        <div class="fg"><label>ゆとり係数</label><input type="number" id="pl-buffer" value="1.3" step="0.05" min="1" max="2" style="width:90px"></div>
+      <h3>⚙️ 時間の見積もり設定</h3>
+      <p style="font-size:12px;color:#888;margin-bottom:12px">実際の現場感覚とズレてきたら、ここの数値を調整してください。保存すると次回以降のスケジュール作成すべてに反映されます(全端末で共有)。</p>
+      <div class="frow" style="margin-bottom:14px">
+        <div class="fg"><label>ゆとり係数</label><input type="number" id="cfg-buffer" step="0.05" min="1" max="2" style="width:90px"></div>
+        <div class="fg"><label>速度A(速い)</label><input type="number" id="cfg-speed-a" step="0.01" style="width:90px"></div>
+        <div class="fg"><label>速度B(標準)</label><input type="number" id="cfg-speed-b" step="0.01" style="width:90px"></div>
+        <div class="fg"><label>速度C(ゆっくり)</label><input type="number" id="cfg-speed-c" step="0.01" style="width:90px"></div>
       </div>
+      <div class="frow" style="margin-bottom:14px">
+        <div class="fg"><label>皮むき(分/個)</label><input type="number" id="cfg-peel" step="0.1" style="width:100px"></div>
+        <div class="fg"><label>収穫(分/キット)</label><input type="number" id="cfg-harvest" step="0.1" style="width:100px"></div>
+        <div class="fg"><label>1キットの個数</label><input type="number" id="cfg-pieces" step="1" style="width:100px"></div>
+        <div class="fg"><label>根切り芽切り(分/個)</label><input type="number" id="cfg-roots" step="0.01" style="width:100px"></div>
+      </div>
+      <div class="frow" style="margin-bottom:14px">
+        <div class="fg"><label>黒にんにく(分/パック)</label><input type="number" id="cfg-kuro" step="0.5" style="width:110px"></div>
+        <div class="fg"><label>はちみつ漬け(分/パック)</label><input type="number" id="cfg-honey" step="0.5" style="width:120px"></div>
+        <div class="fg"><label>醤油酢漬け(分/パック)</label><input type="number" id="cfg-soy" step="0.5" style="width:120px"></div>
+        <div class="fg"><label>皮茶(分/パック)</label><input type="number" id="cfg-tea" step="0.5" style="width:100px"></div>
+        <div class="fg"><label>皮茶完成品(分/固定)</label><input type="number" id="cfg-tea-fin" step="0.5" style="width:120px"></div>
+        <div class="fg"><label>仕上げ(分/個)</label><input type="number" id="cfg-finish" step="0.01" style="width:100px"></div>
+      </div>
+      <div class="frow" style="margin-bottom:14px">
+        <div class="fg"><label>加熱1皿の容量(個)</label><input type="number" id="cfg-dish-cap" step="1" style="width:110px"></div>
+        <div class="fg"><label>加熱1皿(分)</label><input type="number" id="cfg-dish-min" step="0.5" style="width:100px"></div>
+        <div class="fg"><label>加熱水洗い(秒/個)</label><input type="number" id="cfg-wash" step="1" style="width:110px"></div>
+      </div>
+      <div class="frow">
+        <div class="fg"><label>皮むき仕分け・きれい比率</label><input type="number" id="cfg-r-kirei" step="0.05" style="width:120px"></div>
+        <div class="fg"><label>皮むき仕分け・傷比率</label><input type="number" id="cfg-r-kizu" step="0.05" style="width:120px"></div>
+        <div class="fg"><label>根切り芽切り・きれい比率</label><input type="number" id="cfg-r-roots" step="0.05" style="width:130px"></div>
+      </div>
+      <div class="frow" style="margin-top:14px">
+        <button class="btn btn-primary" onclick="savePlannerConfig()">💾 設定を保存</button>
+        <button class="btn" onclick="loadPlannerConfig()">↺ 再読み込み</button>
+      </div>
+    </div>
+
+    <div class="form-sec">
+      <h3>🔢 本日の数量</h3>
+      <p style="font-size:12px;color:#888;margin-bottom:10px">ゆとり係数・速度倍率・各作業の単位時間は「⚙️ 時間の見積もり設定」で調整できます。</p>
       <div class="frow">
         <div class="fg"><label>皮むき見込み個数(AIの計画用の目安値)</label><input type="number" id="pl-peel" value="130" style="width:140px"></div>
         <div class="fg"><label>収穫予定キット数</label><input type="number" id="pl-harvest" value="12" style="width:140px"></div>
@@ -592,6 +647,10 @@ function switchTab(name, btn) {
     populatePlannerCompanySelects();
     renderPlannerInventorySummary();
     loadStaff();
+    loadPlannerConfig();
+  }
+  if (name === 'schedule') {
+    if (!plannerConfig) loadPlannerConfig();
   }
 }
 
@@ -870,12 +929,103 @@ function copySchedule() {
 
 document.getElementById('sched-month').value = new Date().toISOString().slice(0, 7);
 
-function copySchedule() {
-  navigator.clipboard.writeText(document.getElementById('sched-result').textContent)
-    .then(() => showToast('✓ クリップボードにコピーしました'));
+function onSchedModeChange() {
+  const mode = document.getElementById('sched-mode').value;
+  document.getElementById('sched-goal-wrap').style.display = mode==='gemini' ? 'flex' : 'none';
+  document.getElementById('sched-own-inputs').style.display = mode==='own' ? 'block' : 'none';
+  document.getElementById('sched-btn').textContent = mode==='gemini' ? '🤖 スケジュール生成' : '⚙️ スケジュール生成';
+  document.getElementById('sched-output').style.display = 'none';
+  if (mode==='own' && !plannerConfig) loadPlannerConfig();
 }
 
-document.getElementById('sched-month').value = new Date().toISOString().slice(0, 7);
+function onGenerateClick() {
+  const mode = document.getElementById('sched-mode').value;
+  if (mode==='gemini') generateSchedule(); else generateScheduleOwnAI();
+}
+
+function renderDayScheduleHTML(result, people, dateLabel) {
+  const d = result.derived;
+  let html = `<div style="margin-bottom:20px;border:1.5px solid #e4e8dc;border-radius:10px;padding:16px;background:white">`;
+  html += `<div style="font-weight:700;font-size:14px;margin-bottom:8px">${dateLabel}</div>`;
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <span class="badge badge-c">皮むき見込み仕分け(きれい:傷:廃棄) ${d.peelKirei}:${d.peelKizu}:${d.peelHaiki}</span>
+    <span class="badge badge-p">収穫個数(実数) ${d.harvestPieces}個</span>
+  </div>`;
+  if (result.warnings.length) {
+    html += `<div style="background:#FAECE7;border-radius:8px;padding:8px 12px;margin-bottom:10px;color:#7a1a0a;font-size:12px">${result.warnings.map(w=>'・'+w).join('<br>')}</div>`;
+  }
+  function cellFor(person, block) {
+    const st = result.state[person.name];
+    const items = st.assigned.filter(a=>a.block===block);
+    if (items.length===0) {
+      const rem = block==='am'?st.amRem:st.pmRem;
+      return `<td style="font-size:12px">空き(${round1(rem)}分)</td>`;
+    }
+    return `<td style="font-size:12px">${items.map(it=>`${it.label}(${round1(it.minutes)}分)`).join('<br>')}</td>`;
+  }
+  html += `<table><thead><tr><th>時間帯</th>${people.map(p=>`<th>${p.name}</th>`).join('')}</tr></thead><tbody>`;
+  html += `<tr><td>午前(9:30-12:00)</td>${people.map(p=>cellFor(p,'am')).join('')}</tr>`;
+  html += `<tr><td>午後(13:00-15:00)</td>${people.map(p=>cellFor(p,'pm')).join('')}</tr>`;
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+async function generateScheduleOwnAI() {
+  const month = document.getElementById('sched-month').value;
+  const company = document.getElementById('sched-company').value;
+  if (!month) { alert('年月を選択してください'); return; }
+
+  const btn = document.getElementById('sched-btn');
+  btn.disabled = true; btn.textContent = '生成中...';
+  document.getElementById('sched-output').style.display = 'none';
+  document.getElementById('sched-error').style.display = 'none';
+  document.getElementById('sched-loading').style.display = 'block';
+
+  try {
+    if (!plannerConfig) await loadPlannerConfig();
+    await loadStaff();
+    let people = staffList.map(s => ({ name:s.name, company:s.company, skills:s.skills||{} }));
+    if (company !== 'all') people = people.filter(p => p.company === company);
+    if (people.length===0) throw new Error('対象の利用者がいません(利用者マスタ・企業の選択を確認してください)');
+
+    const qty = {
+      peel: Number(document.getElementById('own-peel').value)||0,
+      harvestKits: Number(document.getElementById('own-harvest').value)||0,
+      kuro: Number(document.getElementById('own-kuro').value)||0,
+      honey: Number(document.getElementById('own-honey').value)||0,
+      soy: Number(document.getElementById('own-soy').value)||0,
+      tea: Number(document.getElementById('own-tea').value)||0,
+    };
+
+    const [y,m] = month.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const weekdayNames = ['日','月','火','水','木','金','土'];
+    const weekdayDates = [];
+    for (let day=1; day<=daysInMonth; day++) {
+      const wd = new Date(y, m-1, day).getDay();
+      if (wd!==0 && wd!==6) weekdayDates.push(`${day}日(${weekdayNames[wd]})`);
+    }
+
+    const result = computeSchedule(people, qty, plannerConfig);
+    let html = `<div style="font-size:12px;color:#888;margin-bottom:14px">
+      ${y}年${m}月は平日が${weekdayDates.length}日あります。日ごとの出勤状況や実際の在庫の違いはまだ反映していないため、
+      以下は「典型的な1日」のスケジュール例です。同じ内容が対象の平日(${weekdayDates.join('、')})に繰り返される想定としてご利用ください。
+      実際の毎朝の調整は「📅 日次プランナー」タブで行ってください。
+    </div>`;
+    html += renderDayScheduleHTML(result, people, `${y}年${m}月の平日・代表例`);
+
+    document.getElementById('sched-meta').textContent = `${y}年${parseInt(m)}月 / ${company==='all'?'全企業':company} / 自作AI(精密ロジック)生成 / ${new Date().toLocaleString('ja-JP')}`;
+    document.getElementById('sched-result').innerHTML = html;
+    document.getElementById('sched-output').style.display = 'block';
+  } catch(e) {
+    const errEl = document.getElementById('sched-error');
+    errEl.textContent = `生成に失敗しました：${e.message}`;
+    errEl.style.display = 'block';
+  } finally {
+    document.getElementById('sched-loading').style.display = 'none';
+    btn.disabled = false; btn.textContent = '⚙️ スケジュール生成';
+  }
+}
 
 // ══════════════════════════════════════════════
 // 📅 日次プランナー
@@ -972,38 +1122,56 @@ function renderPlannerInventorySummary() {
 // ── スケジュール計算ロジック(標準プランナーと同じ) ──
 function round1(n){ return Math.round(n*10)/10; }
 
-function computeSchedule(people, qty, buffer) {
+let plannerConfig = null; // loaded from /api/planner-config
+
+function defaultPlannerConfig() {
+  return {
+    buffer: 1.3,
+    speed_mult: { A:0.85, B:1.0, C:1.4 },
+    unit_times: {
+      peel:1, harvestPerKit:3, piecesPerKit:12, rootsPerPiece:0.25,
+      kuroPerPack:3, honeyPerPack:10, soyPerPack:5, teaPerPack:3, teaFinishFixed:5,
+      finishPerItem:0.1667, heatDishCapacity:15, heatDishMinutes:1, heatWashPerPieceSec:10
+    },
+    ratios: { peelKirei:0.5, peelKizu:0.4, rootsKirei:0.9 }
+  };
+}
+
+function computeSchedule(people, qty, cfg) {
+  cfg = cfg || plannerConfig || defaultPlannerConfig();
+  const UT = cfg.unit_times, R = cfg.ratios, MULT = cfg.speed_mult, buffer = cfg.buffer;
   const warnings = [];
   const AM_CAP = 150, PM_CAP = 120;
   const state = {};
   people.forEach(p => { state[p.name] = { amRem: AM_CAP, pmRem: PM_CAP, assigned: [] }; });
 
-  const peelKirei = Math.round(qty.peel*0.5);
-  const peelKizu = Math.round(qty.peel*0.4);
+  const peelKirei = Math.round(qty.peel*R.peelKirei);
+  const peelKizu = Math.round(qty.peel*R.peelKizu);
   const peelHaiki = qty.peel - peelKirei - peelKizu;
-  const harvestPieces = qty.harvestKits*12;
-  const rootsKirei = Math.round(harvestPieces*0.9);
+  const harvestPieces = qty.harvestKits*UT.piecesPerKit;
+  const rootsKirei = Math.round(harvestPieces*R.rootsKirei);
   const rootsKizu = harvestPieces - rootsKirei;
   const heatGoodQty = rootsKirei;
   const heatBadQty = peelKizu;
   const finishQty = qty.kuro + qty.honey + qty.soy + Math.ceil(qty.tea/10);
 
+  function heatTime(n){ return (Math.ceil(n/UT.heatDishCapacity)*UT.heatDishMinutes + n*UT.heatWashPerPieceSec/60)*buffer; }
   const times = {
-    harvest: qty.harvestKits*3*buffer,
-    roots: rootsKirei*(15/60)*buffer,
-    heatGood: (Math.ceil(heatGoodQty/15)*1 + heatGoodQty*10/60)*buffer,
-    heatBad: (Math.ceil(heatBadQty/15)*1 + heatBadQty*10/60)*buffer,
-    kuro: qty.kuro*3*buffer,
-    honey: qty.honey*10,
-    soy: qty.soy*5,
-    tea: qty.tea*3+5,
-    finish: finishQty*(10/60)*buffer,
+    harvest: qty.harvestKits*UT.harvestPerKit*buffer,
+    roots: rootsKirei*UT.rootsPerPiece*buffer,
+    heatGood: heatTime(heatGoodQty),
+    heatBad: heatTime(heatBadQty),
+    kuro: qty.kuro*UT.kuroPerPack*buffer,
+    honey: qty.honey*UT.honeyPerPack,
+    soy: qty.soy*UT.soyPerPack,
+    tea: qty.tea*UT.teaPerPack+UT.teaFinishFixed,
+    finish: finishQty*UT.finishPerItem*buffer,
   };
 
   function eligible(skillKey, exclude){
     return people.filter(p => (p.skills[skillKey]||'B') !== 'none' && !(exclude||[]).includes(p.name));
   }
-  function mult(p, skillKey){ return SPEED_MULT[p.skills[skillKey]||'B'] || 1.0; }
+  function mult(p, skillKey){ return MULT[p.skills[skillKey]||'B'] || 1.0; }
 
   function assignPeel(totalQty, unitTime, buf){
     let remainingQty = totalQty;
@@ -1094,7 +1262,7 @@ function suggestIdle(person, block, remMinutes, presentPeople, result) {
     });
   });
   if (others.length===0) return '器具洗浄・在庫整理';
-  const mult = (per,k)=> SPEED_MULT[per.skills[k]||'B'] || 1.0;
+  const mult = (per,k)=> (plannerConfig||defaultPlannerConfig()).speed_mult[per.skills[k]||'B'] || 1.0;
   others.sort((a,b)=> b.minutes-a.minutes || mult(person,a.skillKey)-mult(person,b.skillKey));
   const target = others[0];
   const lvl = person.skills[target.skillKey]||'B';
@@ -1103,9 +1271,88 @@ function suggestIdle(person, block, remMinutes, presentPeople, result) {
   return `応援(${target.person}さんの${taskName})`;
 }
 
+async function loadPlannerConfig() {
+  try {
+    const res = await fetch('/api/planner-config', { headers: authHeader() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    plannerConfig = data.config;
+  } catch(e) {
+    console.warn('planner-config取得失敗、既定値を使用します:', e.message);
+    plannerConfig = defaultPlannerConfig();
+  }
+  const c = plannerConfig, UT = c.unit_times, R = c.ratios, M = c.speed_mult;
+  document.getElementById('cfg-buffer').value = c.buffer;
+  document.getElementById('cfg-speed-a').value = M.A;
+  document.getElementById('cfg-speed-b').value = M.B;
+  document.getElementById('cfg-speed-c').value = M.C;
+  document.getElementById('cfg-peel').value = UT.peel;
+  document.getElementById('cfg-harvest').value = UT.harvestPerKit;
+  document.getElementById('cfg-pieces').value = UT.piecesPerKit;
+  document.getElementById('cfg-roots').value = UT.rootsPerPiece;
+  document.getElementById('cfg-kuro').value = UT.kuroPerPack;
+  document.getElementById('cfg-honey').value = UT.honeyPerPack;
+  document.getElementById('cfg-soy').value = UT.soyPerPack;
+  document.getElementById('cfg-tea').value = UT.teaPerPack;
+  document.getElementById('cfg-tea-fin').value = UT.teaFinishFixed;
+  document.getElementById('cfg-finish').value = UT.finishPerItem;
+  document.getElementById('cfg-dish-cap').value = UT.heatDishCapacity;
+  document.getElementById('cfg-dish-min').value = UT.heatDishMinutes;
+  document.getElementById('cfg-wash').value = UT.heatWashPerPieceSec;
+  document.getElementById('cfg-r-kirei').value = R.peelKirei;
+  document.getElementById('cfg-r-kizu').value = R.peelKizu;
+  document.getElementById('cfg-r-roots').value = R.rootsKirei;
+}
+
+function readConfigFromForm() {
+  return {
+    buffer: parseFloat(document.getElementById('cfg-buffer').value)||1.3,
+    speed_mult: {
+      A: parseFloat(document.getElementById('cfg-speed-a').value)||0.85,
+      B: parseFloat(document.getElementById('cfg-speed-b').value)||1.0,
+      C: parseFloat(document.getElementById('cfg-speed-c').value)||1.4,
+    },
+    unit_times: {
+      peel: parseFloat(document.getElementById('cfg-peel').value)||1,
+      harvestPerKit: parseFloat(document.getElementById('cfg-harvest').value)||3,
+      piecesPerKit: parseFloat(document.getElementById('cfg-pieces').value)||12,
+      rootsPerPiece: parseFloat(document.getElementById('cfg-roots').value)||0.25,
+      kuroPerPack: parseFloat(document.getElementById('cfg-kuro').value)||3,
+      honeyPerPack: parseFloat(document.getElementById('cfg-honey').value)||10,
+      soyPerPack: parseFloat(document.getElementById('cfg-soy').value)||5,
+      teaPerPack: parseFloat(document.getElementById('cfg-tea').value)||3,
+      teaFinishFixed: parseFloat(document.getElementById('cfg-tea-fin').value)||5,
+      finishPerItem: parseFloat(document.getElementById('cfg-finish').value)||0.1667,
+      heatDishCapacity: parseFloat(document.getElementById('cfg-dish-cap').value)||15,
+      heatDishMinutes: parseFloat(document.getElementById('cfg-dish-min').value)||1,
+      heatWashPerPieceSec: parseFloat(document.getElementById('cfg-wash').value)||10,
+    },
+    ratios: {
+      peelKirei: parseFloat(document.getElementById('cfg-r-kirei').value)||0.5,
+      peelKizu: parseFloat(document.getElementById('cfg-r-kizu').value)||0.4,
+      rootsKirei: parseFloat(document.getElementById('cfg-r-roots').value)||0.9,
+    }
+  };
+}
+
+async function savePlannerConfig() {
+  const cfg = readConfigFromForm();
+  try {
+    const res = await fetch('/api/planner-config', { method:'PUT', headers: authHeader(), body: JSON.stringify(cfg) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    plannerConfig = cfg;
+    showToast('✓ 設定を保存しました(全端末に反映されます)');
+  } catch(e) {
+    alert('保存に失敗しました: ' + e.message);
+  }
+}
+
 function runPlanner() {
   if (staffList.length===0) { alert('利用者を1人以上追加してください'); return; }
-  const buffer = parseFloat(document.getElementById('pl-buffer').value) || 1.3;
+  if (!plannerConfig) plannerConfig = defaultPlannerConfig();
+  const cfg = readConfigFromForm();
+  plannerConfig = cfg;
   const qty = {
     peel: Number(document.getElementById('pl-peel').value)||0,
     harvestKits: Number(document.getElementById('pl-harvest').value)||0,
@@ -1115,7 +1362,7 @@ function runPlanner() {
     tea: Number(document.getElementById('pl-tea').value)||0,
   };
   const people = staffList.map(s => ({ name: s.name, company: s.company, skills: s.skills||{} }));
-  const result = computeSchedule(people, qty, buffer);
+  const result = computeSchedule(people, qty, cfg);
   lastPlanResult = { qty, result };
 
   document.getElementById('pl-output').style.display = 'block';
