@@ -134,6 +134,8 @@ tr:last-child td { border-bottom: none; }
     <button class="tab active" onclick="switchTab('inventory',this)">📦 在庫一覧</button>
     <button class="tab" onclick="switchTab('history',this)">📋 入力履歴</button>
     <button class="tab" onclick="switchTab('settings',this)">⚙️ 企業管理</button>
+    <button class="tab" onclick="switchTab('schedule',this)">🤖 月次スケジュール</button>
+    <button class="tab" onclick="switchTab('planner',this)">📅 日次プランナー</button>
   </div>
 
   <div class="sec active" id="tab-inventory">
@@ -195,6 +197,73 @@ tr:last-child td { border-bottom: none; }
         </div>
         <div id="sched-result" style="background:#f8faf5;border:1.5px solid #d0ddc8;border-radius:10px;padding:20px;font-size:13px;line-height:2;white-space:pre-wrap;max-height:65vh;overflow-y:auto"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="sec" id="tab-planner">
+    <div class="form-sec">
+      <h3>👥 利用者・技能マスタ</h3>
+      <p style="font-size:12px;color:#888;margin-bottom:12px">A=速い(標準の0.85倍)／B=標準／C=ゆっくり(標準の1.4倍)／対応不可。基本的には全員が担当可能という前提で、速さの違いだけで調整します。</p>
+      <div style="overflow-x:auto">
+        <table id="staff-table">
+          <thead>
+            <tr>
+              <th>氏名</th><th>企業</th><th>皮むき</th><th>収穫</th><th>根切り芽切り</th><th>加熱処理</th><th>黒/はちみつ</th><th>醤油漬け</th><th>皮茶</th><th>仕上げ</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="staff-tbody"></tbody>
+        </table>
+      </div>
+      <div class="frow" style="margin-top:14px">
+        <div class="fg"><label>氏名</label><input type="text" id="staff-new-name" placeholder="例：佐藤さん" style="width:140px"></div>
+        <div class="fg"><label>企業</label>
+          <select id="staff-new-company" style="width:160px"><option value="">(全社共通)</option></select>
+        </div>
+        <button class="btn btn-primary" onclick="addStaff()">＋ 利用者を追加</button>
+      </div>
+    </div>
+
+    <div class="form-sec">
+      <h3>📦 在庫サマリー(参考・実データ)</h3>
+      <p style="font-size:12px;color:#888;margin-bottom:10px">在庫一覧タブと同じ実データです。皮むきは「できた数」で後から数える方式のため自動入力はしません。数量入力の参考にしてください。</p>
+      <div class="frow" style="margin-bottom:10px">
+        <div class="fg"><label>企業</label>
+          <select id="planner-company-filter" onchange="renderPlannerInventorySummary()" style="width:180px"><option value="all">全企業</option></select>
+        </div>
+      </div>
+      <div id="planner-inventory-summary" style="font-size:13px;line-height:1.8;background:#f8faf5;border:1.5px solid #d0ddc8;border-radius:10px;padding:14px 16px;white-space:pre-wrap"></div>
+    </div>
+
+    <div class="form-sec">
+      <h3>🔢 本日の数量</h3>
+      <div class="frow" style="margin-bottom:10px">
+        <div class="fg"><label>ゆとり係数</label><input type="number" id="pl-buffer" value="1.3" step="0.05" min="1" max="2" style="width:90px"></div>
+      </div>
+      <div class="frow">
+        <div class="fg"><label>皮むき見込み個数(AIの計画用の目安値)</label><input type="number" id="pl-peel" value="130" style="width:140px"></div>
+        <div class="fg"><label>収穫予定キット数</label><input type="number" id="pl-harvest" value="12" style="width:140px"></div>
+        <div class="fg"><label>黒にんにく(パック目標)</label><input type="number" id="pl-kuro" value="16" style="width:140px"></div>
+        <div class="fg"><label>はちみつ漬け(パック目標)</label><input type="number" id="pl-honey" value="10" style="width:140px"></div>
+        <div class="fg"><label>醤油酢漬け(パック目標)</label><input type="number" id="pl-soy" value="10" style="width:140px"></div>
+        <div class="fg"><label>皮茶(お茶パック目標)</label><input type="number" id="pl-tea" value="10" style="width:140px"></div>
+      </div>
+      <div class="frow" style="margin-top:14px">
+        <button class="btn btn-primary" onclick="runPlanner()">🤖 スケジュールを作成</button>
+        <button class="btn" id="pl-save-btn" onclick="savePlannerToPredictions()" style="display:none">💾 見込みをpredictionsに記録</button>
+      </div>
+    </div>
+
+    <div class="form-sec" id="pl-output" style="display:none">
+      <h3>📅 本日のスケジュール(9:30〜15:00・昼休み12:00〜13:00)</h3>
+      <div id="pl-derived" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+      <div id="pl-warnings"></div>
+      <div style="overflow-x:auto">
+        <table id="pl-sched-table"></table>
+      </div>
+      <div class="detail-label" style="margin-top:16px">AIの提案理由</div>
+      <ul id="pl-notes" style="font-size:13px;line-height:1.8;padding-left:20px"></ul>
+      <div class="detail-label" style="margin-top:16px">企業ごとの本日の作業時間(報告用)</div>
+      <table id="pl-company-table"></table>
     </div>
   </div>
 </main>
@@ -519,6 +588,11 @@ function switchTab(name, btn) {
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
+  if (name === 'planner') {
+    populatePlannerCompanySelects();
+    renderPlannerInventorySummary();
+    loadStaff();
+  }
 }
 
 function openCloseModal() {
@@ -795,6 +869,342 @@ function copySchedule() {
 }
 
 document.getElementById('sched-month').value = new Date().toISOString().slice(0, 7);
+
+function copySchedule() {
+  navigator.clipboard.writeText(document.getElementById('sched-result').textContent)
+    .then(() => showToast('✓ クリップボードにコピーしました'));
+}
+
+document.getElementById('sched-month').value = new Date().toISOString().slice(0, 7);
+
+// ══════════════════════════════════════════════
+// 📅 日次プランナー
+// ══════════════════════════════════════════════
+const SKILL_KEYS = ['peel','harvest','roots','heat','kuroHoney','soy','tea','finish'];
+const SKILL_LABELS = { peel:'皮むき', harvest:'収穫', roots:'根切り・芽切り', heat:'加熱処理', kuroHoney:'黒にんにく/はちみつ', soy:'醤油酢漬け', tea:'皮茶', finish:'仕上げ' };
+const SPEED_MULT = { A:0.85, B:1.0, C:1.4 };
+let staffList = [];
+let lastPlanResult = null;
+
+function populatePlannerCompanySelects() {
+  const names = appData.companies || [];
+  const opts = names.map(n => `<option value="${n}">${n}</option>`).join('');
+  const sel1 = document.getElementById('staff-new-company');
+  const sel2 = document.getElementById('planner-company-filter');
+  if (sel1) sel1.innerHTML = `<option value="">(全社共通)</option>${opts}`;
+  if (sel2) sel2.innerHTML = `<option value="all">全企業</option>${opts}`;
+}
+
+async function loadStaff() {
+  try {
+    const res = await fetch('/api/staff', { headers: authHeader() });
+    const data = await res.json();
+    staffList = data.staff || [];
+  } catch(e) { staffList = []; }
+  renderStaffTable();
+}
+
+function renderStaffTable() {
+  const tbody = document.getElementById('staff-tbody');
+  tbody.innerHTML = staffList.map(s => {
+    const skills = s.skills || {};
+    let html = `<tr>
+      <td><input type="text" value="${s.name}" style="width:110px;border:1px solid #d0d4c8;border-radius:6px;padding:4px 6px" onchange="updateStaff(${s.id},'name',this.value)"></td>
+      <td>${s.company || '(全社共通)'}</td>`;
+    SKILL_KEYS.forEach(k => {
+      const cur = skills[k] || 'B';
+      const opts = ['A','B','C','none'].map(v => `<option value="${v}" ${cur===v?'selected':''}>${v==='none'?'不可':v}</option>`).join('');
+      html += `<td><select onchange="updateStaffSkill(${s.id},'${k}',this.value)">${opts}</select></td>`;
+    });
+    html += `<td><button class="btn btn-danger" onclick="deleteStaff(${s.id})">削除</button></td></tr>`;
+    return html;
+  }).join('');
+}
+
+async function addStaff() {
+  const name = document.getElementById('staff-new-name').value.trim();
+  const company = document.getElementById('staff-new-company').value;
+  if (!name) { alert('氏名を入力してください'); return; }
+  const skills = {}; SKILL_KEYS.forEach(k => skills[k] = 'B');
+  try {
+    const res = await fetch('/api/staff', {
+      method: 'POST', headers: authHeader(),
+      body: JSON.stringify({ name, company: company || null, skills })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    document.getElementById('staff-new-name').value = '';
+    showToast('✓ 利用者を追加しました');
+    loadStaff();
+  } catch(e) { alert('追加に失敗しました: ' + e.message); }
+}
+
+async function updateStaff(id, field, value) {
+  try {
+    await fetch(`/api/staff/${id}`, { method:'PATCH', headers: authHeader(), body: JSON.stringify({ [field]: value }) });
+  } catch(e) { alert('更新に失敗しました'); }
+}
+
+async function updateStaffSkill(id, key, value) {
+  const s = staffList.find(x => x.id === id);
+  if (!s) return;
+  const skills = Object.assign({}, s.skills, { [key]: value });
+  s.skills = skills;
+  try {
+    await fetch(`/api/staff/${id}`, { method:'PATCH', headers: authHeader(), body: JSON.stringify({ skills }) });
+  } catch(e) { alert('更新に失敗しました'); }
+}
+
+async function deleteStaff(id) {
+  if (!confirm('この利用者を削除しますか？')) return;
+  try {
+    await fetch(`/api/staff/${id}`, { method:'DELETE', headers: authHeader() });
+    showToast('✓ 削除しました');
+    loadStaff();
+  } catch(e) { alert('削除に失敗しました'); }
+}
+
+function renderPlannerInventorySummary() {
+  const company = document.getElementById('planner-company-filter').value;
+  document.getElementById('planner-inventory-summary').textContent = buildInventorySummary(company);
+}
+
+// ── スケジュール計算ロジック(標準プランナーと同じ) ──
+function round1(n){ return Math.round(n*10)/10; }
+
+function computeSchedule(people, qty, buffer) {
+  const warnings = [];
+  const AM_CAP = 150, PM_CAP = 120;
+  const state = {};
+  people.forEach(p => { state[p.name] = { amRem: AM_CAP, pmRem: PM_CAP, assigned: [] }; });
+
+  const peelKirei = Math.round(qty.peel*0.5);
+  const peelKizu = Math.round(qty.peel*0.4);
+  const peelHaiki = qty.peel - peelKirei - peelKizu;
+  const harvestPieces = qty.harvestKits*12;
+  const rootsKirei = Math.round(harvestPieces*0.9);
+  const rootsKizu = harvestPieces - rootsKirei;
+  const heatGoodQty = rootsKirei;
+  const heatBadQty = peelKizu;
+  const finishQty = qty.kuro + qty.honey + qty.soy + Math.ceil(qty.tea/10);
+
+  const times = {
+    harvest: qty.harvestKits*3*buffer,
+    roots: rootsKirei*(15/60)*buffer,
+    heatGood: (Math.ceil(heatGoodQty/15)*1 + heatGoodQty*10/60)*buffer,
+    heatBad: (Math.ceil(heatBadQty/15)*1 + heatBadQty*10/60)*buffer,
+    kuro: qty.kuro*3*buffer,
+    honey: qty.honey*10,
+    soy: qty.soy*5,
+    tea: qty.tea*3+5,
+    finish: finishQty*(10/60)*buffer,
+  };
+
+  function eligible(skillKey, exclude){
+    return people.filter(p => (p.skills[skillKey]||'B') !== 'none' && !(exclude||[]).includes(p.name));
+  }
+  function mult(p, skillKey){ return SPEED_MULT[p.skills[skillKey]||'B'] || 1.0; }
+
+  function assignPeel(totalQty, unitTime, buf){
+    let remainingQty = totalQty;
+    const candidates = eligible('peel').map(c => ({ c, m: mult(c,'peel') })).sort((a,b)=>a.m-b.m);
+    if (candidates.length===0 && totalQty>0) { warnings.push('皮むき: 対応できる利用者がいません'); return; }
+    for (const {c, m} of candidates) {
+      if (remainingQty<=0) break;
+      const capMin = state[c.name].amRem + state[c.name].pmRem;
+      const capQty = Math.floor(capMin / (unitTime*m*buf));
+      const take = Math.min(capQty, remainingQty);
+      if (take<=0) continue;
+      const timeUsed = take*unitTime*m*buf;
+      const useAm = Math.min(state[c.name].amRem, timeUsed);
+      const usePm = timeUsed - useAm;
+      state[c.name].amRem -= useAm; state[c.name].pmRem -= usePm;
+      if (useAm>0) state[c.name].assigned.push({block:'am', label:`皮むき(見込み${take}個)`, minutes:useAm, skillKey:'peel'});
+      if (usePm>0) state[c.name].assigned.push({block:'pm', label:`皮むき(見込み${take}個)`, minutes:usePm, skillKey:'peel'});
+      remainingQty -= take;
+    }
+    if (remainingQty>0) warnings.push(`皮むき: 全員の空き時間を使っても見込み${remainingQty}個分の時間が確保できません。`);
+  }
+
+  function tryAssign(label, baseTime, skillKey, preferBlock, exclude){
+    if (baseTime<=0) return null;
+    const candidates = eligible(skillKey, exclude);
+    if (candidates.length===0) { warnings.push(`${label}: 対応できる利用者がいません`); return null; }
+    const other = preferBlock==='am' ? 'pm' : 'am';
+    const remKey = b => b==='am' ? 'amRem' : 'pmRem';
+    const withTime = candidates.map(c => ({ c, t: baseTime*mult(c,skillKey) })).sort((a,b)=>a.t-b.t);
+    for (const {c,t} of withTime) {
+      if (state[c.name][remKey(preferBlock)] >= t) {
+        state[c.name][remKey(preferBlock)] -= t;
+        state[c.name].assigned.push({block:preferBlock,label,minutes:t,skillKey});
+        return {person:c.name};
+      }
+    }
+    for (const {c,t} of withTime) {
+      if (state[c.name][remKey(other)] >= t) {
+        state[c.name][remKey(other)] -= t;
+        state[c.name].assigned.push({block:other,label,minutes:t,skillKey});
+        return {person:c.name};
+      }
+    }
+    const bySlack = [...withTime].sort((a,b)=>
+      (state[b.c.name].amRem+state[b.c.name].pmRem-b.t) - (state[a.c.name].amRem+state[a.c.name].pmRem-a.t));
+    const {c:best, t:bestTime} = bySlack[0];
+    const totalRem = state[best.name].amRem + state[best.name].pmRem;
+    if (totalRem >= bestTime) {
+      const useAm = Math.min(state[best.name].amRem, bestTime);
+      const usePm = bestTime - useAm;
+      state[best.name].amRem -= useAm; state[best.name].pmRem -= usePm;
+      if (useAm>0) state[best.name].assigned.push({block:'am',label:label+'(前半)',minutes:useAm,skillKey});
+      if (usePm>0) state[best.name].assigned.push({block:'pm',label:label+'(後半)',minutes:usePm,skillKey});
+      return {person:best.name};
+    } else {
+      const useAm = state[best.name].amRem, usePm = state[best.name].pmRem;
+      state[best.name].amRem=0; state[best.name].pmRem=0;
+      if (useAm>0) state[best.name].assigned.push({block:'am',label:label+'(前半)',minutes:useAm,skillKey});
+      if (usePm>0) state[best.name].assigned.push({block:'pm',label:label+'(後半)',minutes:usePm,skillKey});
+      warnings.push(`${label}: 本日中に終わりません(約${round1(bestTime-totalRem)}分不足)`);
+      return {person:best.name};
+    }
+  }
+
+  assignPeel(qty.peel, 1, buffer);
+  tryAssign('収穫', times.harvest, 'harvest', 'am');
+  tryAssign('根切り・芽切り', times.roots, 'roots', 'am');
+  const kuroRes = tryAssign('黒にんにくづくり', times.kuro, 'kuroHoney', 'am');
+  tryAssign('はちみつ漬け', times.honey, 'kuroHoney', 'am', kuroRes ? [kuroRes.person] : []);
+  tryAssign('加熱処理(きれい)', times.heatGood, 'heat', 'pm');
+  tryAssign('加熱処理(傷もの)', times.heatBad, 'heat', 'pm');
+  tryAssign('醤油酢漬け加工', times.soy, 'soy', 'pm');
+  tryAssign('皮茶', times.tea, 'tea', 'pm');
+  tryAssign('仕上げ', times.finish, 'finish', 'pm');
+
+  return { state, warnings, derived:{peelKirei,peelKizu,peelHaiki,harvestPieces,rootsKirei,rootsKizu,heatGoodQty,heatBadQty,finishQty}, qty };
+}
+
+function suggestIdle(person, block, remMinutes, presentPeople, result) {
+  if (remMinutes < 15) return '休憩';
+  const others = [];
+  presentPeople.forEach(p => {
+    if (p.name===person.name) return;
+    const st = result.state[p.name];
+    if (!st) return;
+    st.assigned.filter(a=>a.block===block && a.skillKey && a.skillKey!=='peel').forEach(a=>{
+      others.push({ person:p.name, minutes:a.minutes, skillKey:a.skillKey });
+    });
+  });
+  if (others.length===0) return '器具洗浄・在庫整理';
+  const mult = (per,k)=> SPEED_MULT[per.skills[k]||'B'] || 1.0;
+  others.sort((a,b)=> b.minutes-a.minutes || mult(person,a.skillKey)-mult(person,b.skillKey));
+  const target = others[0];
+  const lvl = person.skills[target.skillKey]||'B';
+  const taskName = SKILL_LABELS[target.skillKey]||target.skillKey;
+  if (lvl==='C') return `OJT(${target.person}さんの${taskName}を手伝いながら習得)`;
+  return `応援(${target.person}さんの${taskName})`;
+}
+
+function runPlanner() {
+  if (staffList.length===0) { alert('利用者を1人以上追加してください'); return; }
+  const buffer = parseFloat(document.getElementById('pl-buffer').value) || 1.3;
+  const qty = {
+    peel: Number(document.getElementById('pl-peel').value)||0,
+    harvestKits: Number(document.getElementById('pl-harvest').value)||0,
+    kuro: Number(document.getElementById('pl-kuro').value)||0,
+    honey: Number(document.getElementById('pl-honey').value)||0,
+    soy: Number(document.getElementById('pl-soy').value)||0,
+    tea: Number(document.getElementById('pl-tea').value)||0,
+  };
+  const people = staffList.map(s => ({ name: s.name, company: s.company, skills: s.skills||{} }));
+  const result = computeSchedule(people, qty, buffer);
+  lastPlanResult = { qty, result };
+
+  document.getElementById('pl-output').style.display = 'block';
+  document.getElementById('pl-save-btn').style.display = 'inline-block';
+
+  const d = result.derived;
+  document.getElementById('pl-derived').innerHTML = `
+    <span class="badge badge-c">皮むき見込み仕分け(きれい:傷:廃棄) ${d.peelKirei}:${d.peelKizu}:${d.peelHaiki}</span>
+    <span class="badge badge-p">収穫個数(実数) ${d.harvestPieces}個</span>
+    <span class="badge badge-s">加熱対象(きれい/傷) ${d.heatGoodQty} / ${d.heatBadQty}</span>
+  `;
+
+  const warnEl = document.getElementById('pl-warnings');
+  warnEl.innerHTML = result.warnings.length
+    ? `<div style="background:#FAECE7;border-radius:10px;padding:12px 16px;margin-bottom:14px;color:#7a1a0a;font-size:13px">${result.warnings.map(w=>`・${w}`).join('<br>')}</div>`
+    : '';
+
+  function cellFor(person, block) {
+    const st = result.state[person.name];
+    const items = st.assigned.filter(a=>a.block===block);
+    if (items.length===0) {
+      const rem = block==='am'?st.amRem:st.pmRem;
+      const sug = suggestIdle(person, block, rem, people, result);
+      return `<td style="font-size:12px">空き時間(${round1(rem)}分)<br><span style="color:#639922">提案: ${sug}</span></td>`;
+    }
+    return `<td style="font-size:12px">${items.map(it=>`${it.label}(${round1(it.minutes)}分)`).join('<br>')}</td>`;
+  }
+  const table = document.getElementById('pl-sched-table');
+  let head = `<thead><tr><th>時間帯</th>${people.map(p=>`<th>${p.name}${p.company?`<br><small style="font-weight:400">(${p.company})</small>`:''}</th>`).join('')}</tr></thead>`;
+  let body = '<tbody>';
+  body += `<tr><td><strong>9:30-12:00</strong><br>午前(150分)</td>${people.map(p=>cellFor(p,'am')).join('')}</tr>`;
+  body += `<tr><td><strong>12:00-13:00</strong><br>昼休み</td>${people.map(()=>'<td>昼休み</td>').join('')}</tr>`;
+  body += `<tr><td><strong>13:00-15:00</strong><br>午後(120分)</td>${people.map(p=>cellFor(p,'pm')).join('')}</tr>`;
+  body += '</tbody>';
+  table.innerHTML = head + body;
+
+  const notes = [
+    '皮むきは「できた数」で後から数える方式のため、対象個数は利用者への指示ではなく、後工程を仮組みするためのAIの見込み値です。',
+    '皮むきは、同じ分を複数人で一緒に剥くことはせず、一番速い人から順に持ち時間いっぱいまで担当し、残れば次の人が引き継ぎます。',
+    '収穫は根切り・芽切りの計算に個数が必要なため、実数で計算しています。',
+    '技能はA(速い)/B(標準)/C(ゆっくり)で評価し、一番早く終えられる人から優先的に割り当てています。',
+    '空き時間には、同じ時間帯で一番負荷が重い作業への応援(自分がC評価ならOJT)、なければ器具洗浄・在庫整理を提案します。',
+    '同じ現場に複数企業の利用者がいる場合も、全員をまとめて1つのスケジュールとして組んでいます。',
+  ];
+  document.getElementById('pl-notes').innerHTML = notes.map(n=>`<li>${n}</li>`).join('');
+
+  const companyTotals = {};
+  people.forEach(p => {
+    const st = result.state[p.name];
+    const total = st.assigned.reduce((s,a)=>s+a.minutes,0);
+    const key = p.company || '(企業未設定)';
+    if (!companyTotals[key]) companyTotals[key] = { minutes:0, people:0 };
+    companyTotals[key].minutes += total; companyTotals[key].people += 1;
+  });
+  let cHtml = '<thead><tr><th>企業名</th><th>人数</th><th>本日の合計作業時間</th></tr></thead><tbody>';
+  Object.entries(companyTotals).forEach(([name,v])=>{
+    cHtml += `<tr><td>${name}</td><td>${v.people}名</td><td>${round1(v.minutes)}分</td></tr>`;
+  });
+  document.getElementById('pl-company-table').innerHTML = cHtml + '</tbody>';
+
+  showToast('✓ スケジュールを作成しました');
+}
+
+async function savePlannerToPredictions() {
+  if (!lastPlanResult) return;
+  const today = new Date().toISOString().slice(0,10);
+  const company = document.getElementById('planner-company-filter').value;
+  const companyVal = company === 'all' ? null : company;
+  const { qty } = lastPlanResult;
+  const tasks = [
+    { type:'peel', predicted_count: qty.peel, task:'皮むき見込み' },
+    { type:'harvest', predicted_count: qty.harvestKits*12, task:'収穫' },
+    { type:'kuro', predicted_count: qty.kuro, task:'黒にんにくづくり' },
+    { type:'honey', predicted_count: qty.honey, task:'はちみつ漬け' },
+    { type:'soy', predicted_count: qty.soy, task:'醤油酢漬け加工' },
+    { type:'tea', predicted_count: qty.tea, task:'皮茶' },
+  ];
+  try {
+    for (const t of tasks) {
+      await fetch('/api/prediction', {
+        method:'POST', headers: authHeader(),
+        body: JSON.stringify({ date: today, type: t.type, predicted_count: t.predicted_count, task: t.task, company: companyVal, note: '日次プランナーによる自動生成' })
+      });
+    }
+    showToast('✓ predictionsに記録しました');
+  } catch(e) {
+    alert('記録に失敗しました: ' + e.message);
+  }
+}
 
 async function doLogout() {
   await fetch('/api/logout', { method:'POST', headers: authHeader() });
